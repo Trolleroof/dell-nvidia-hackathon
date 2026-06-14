@@ -103,6 +103,14 @@ def set_task(instruction: str) -> dict[str, str]:
     """
     global _current_task
     _current_task = instruction.strip()
+    # Push into the env so the oracle's part filter and done-check honour it
+    # (e.g. "pick the yellow only" stops after the yellow cube).
+    try:
+        env = get_cell_env()
+        if hasattr(env, "set_task"):
+            env.set_task(_current_task)
+    except Exception:
+        pass
     return {"status": "ok", "task": _current_task}
 
 
@@ -310,6 +318,13 @@ async def queue_command(request):  # type: ignore[no-untyped-def]
         state = env.get_state()
         did_reset = True
 
+    # Apply the operator's prompt AFTER any reset so it isn't clobbered by the
+    # scenario default — this is what makes "pick the yellow only" actually
+    # filter the parts and stop once the yellow cube is placed.
+    if hasattr(env, "set_task"):
+        env.set_task(_current_task)
+        state = env.get_state()
+
     for _ in range(steps):
         if state.get("done"):
             break
@@ -351,6 +366,41 @@ async def sim_state_route(request):  # type: ignore[no-untyped-def]
     env = get_cell_env()
     state = env.get_state()
     return JSONResponse(state, headers=_CORS_HEADERS)
+
+
+@mcp.custom_route("/step_plan", methods=["POST", "OPTIONS"])
+async def step_plan_route(request):  # type: ignore[no-untyped-def]
+    """Execute one sim step using a CellPlan supplied by an LLM (not the oracle).
+
+    Body: { "plan_json": "<CellPlan JSON string>" }
+    Returns the new sim state + events.
+    """
+    from starlette.responses import JSONResponse
+
+    if request.method == "OPTIONS":
+        return JSONResponse({}, headers=_CORS_HEADERS)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    plan_json = body.get("plan_json", "")
+    if not plan_json:
+        return JSONResponse({"ok": False, "error": "plan_json required"}, status_code=400, headers=_CORS_HEADERS)
+
+    try:
+        import json as _json
+        raw = _json.loads(plan_json)
+        plan = CellPlan.model_validate(raw)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"invalid plan_json: {e}"}, status_code=400, headers=_CORS_HEADERS)
+
+    result = get_cell_env().step(plan)
+    _save_live_frame("step_plan")
+    _emit_live_telemetry(result, plan)
+
+    return JSONResponse({"ok": True, **result}, headers=_CORS_HEADERS)
 
 
 @mcp.custom_route("/teleport_part", methods=["POST", "OPTIONS"])

@@ -26,20 +26,31 @@ inference:
   timeout_ms: 30000
 
   primary:
-    label: "DiffusionGemma (hero path)"
+    label: "Nemotron-3-Nano 30B (Ollama local)"
     provider: openai-compatible
-    base_url: "http://localhost:8000/v1"
-    model: "nvidia/diffusiongemma-26B-A4B-it-NVFP4"
-    type: diffusion
-    canvas_length: 256           # diffusion denoising canvas — keep ≥256 for speed advantage
+    base_url: "http://localhost:11434/v1"
+    model: "nemotron-3-nano:30b"
+    type: autoregressive
     structured_output:
-      mode: guided-json          # vLLM guided JSON decoding — eliminates parse failures
-      parser: gemma4
-    extra_params:
-      reasoning_parser: gemma4
-      hf_overrides:
-        diffusion_sampler: entropy_bound
-        diffusion_entropy_bound: 0.1
+      mode: guided-json
+      parser: nemotron
+
+  # ── Previous primary (DiffusionGemma) — commented out ─────────────────────
+  # primary:
+  #   label: "DiffusionGemma (hero path)"
+  #   provider: openai-compatible
+  #   base_url: "http://localhost:8000/v1"
+  #   model: "nvidia/diffusiongemma-26B-A4B-it-NVFP4"
+  #   type: diffusion
+  #   canvas_length: 256
+  #   structured_output:
+  #     mode: guided-json
+  #     parser: gemma4
+  #   extra_params:
+  #     reasoning_parser: gemma4
+  #     hf_overrides:
+  #       diffusion_sampler: entropy_bound
+  #       diffusion_entropy_bound: 0.1
 
   fallback:
     label: "Gemma4 AR (baseline / always-on fallback)"
@@ -51,7 +62,18 @@ inference:
       mode: guided-json
       parser: gemma4
 
-  # Activate fallback if primary is unreachable or if diffusion fails by 12:00
+  # ── Previous fallback (Gemma4 AR) — commented out ─────────────────────────
+  # fallback:
+  #   label: "Gemma4 AR (baseline / always-on fallback)"
+  #   provider: openai-compatible
+  #   base_url: "http://localhost:8001/v1"
+  #   model: "google/gemma-4-26B-A4B-it"
+  #   type: autoregressive
+  #   structured_output:
+  #     mode: guided-json
+  #     parser: gemma4
+
+  # Activate fallback if primary is unreachable or on repeated parse failures
   fallback_trigger:
     on_connection_error: true
     on_timeout: true
@@ -78,6 +100,9 @@ demo:
   # Set to true once both endpoints are confirmed up (after start_models.sh).
   dual_model_race: false
   race_endpoints:
-    diffusion: "http://localhost:8000/v1"
-    ar:        "http://localhost:8001/v1"
+    nemotron: "http://localhost:11434/v1"
+    ar:       "http://localhost:8001/v1"
+  # Previous race endpoints (commented out):
+  # diffusion: "http://localhost:8000/v1"
+  # ar:        "http://localhost:8001/v1"
   race_seed: 0                  # identical episode seed for fair comparison

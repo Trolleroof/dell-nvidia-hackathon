@@ -5,26 +5,31 @@
 
   "models": {
     "providers": {
-      "local-gb10": {
+      "ollama-local": {
         "type": "openai-compatible",
-        "baseUrl": "http://localhost:8000/v1",
+        "baseUrl": "http://localhost:11434/v1",
         "models": [
-          "diffusiongemma-18b",
-          "gemma4-ar"
+          "nemotron-3-nano:30b"
+        ]
+      },
+      "local-gb10-ar": {
+        "type": "openai-compatible",
+        "baseUrl": "http://localhost:8001/v1",
+        "models": [
+          "google/gemma-4-26B-A4B-it"
         ]
       }
     },
-    "default": "local-gb10/diffusiongemma-18b",
-    "fallback": "local-gb10/gemma4-ar"
+    "default": "ollama-local/nemotron-3-nano:30b",
+    "fallback": "local-gb10-ar/google/gemma-4-26B-A4B-it"
   },
 
   "mcp": {
     "servers": {
       "factorymind-sim": {
-        "command": "python3",
-        "args": ["-m", "factorymind.sim.mcp_server"],
-        "transport": "stdio",
-        "description": "FactoryMind cell sim — tools: reset_cell, get_cell_state, step_cell, list_targets"
+        "transport": "http",
+        "url": "http://localhost:8765/mcp",
+        "description": "FactoryMind cell sim — tools: reset_cell, get_cell_state, step_cell, set_task, list_targets"
       }
     }
   },
@@ -38,13 +43,14 @@
   },
 
   "shell": {
+    "policy": "./openshell-policy.yaml",
     "network": {
-      "allow": ["localhost:8000"],
+      "allow": ["localhost:11434", "localhost:8765", "localhost:8766"],
       "deny": ["*"]
     },
     "filesystem": {
       "read": ["./"],
-      "write": []
+      "write": ["./telemetry/"]
     }
   }
 }

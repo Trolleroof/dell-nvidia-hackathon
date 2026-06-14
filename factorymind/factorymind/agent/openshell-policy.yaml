@@ -14,9 +14,13 @@ network:
   default: deny
   allow:
     - host: "localhost"
+      port: 11434
+      protocol: http
+      label: "Ollama local inference (NemoClaw primary — nemotron-3-nano:30b)"
+    - host: "localhost"
       port: 8000
       protocol: http
-      label: "DiffusionGemma inference endpoint (primary)"
+      label: "DiffusionGemma inference endpoint (reserved)"
     - host: "localhost"
       port: 8001
       protocol: http
@@ -24,7 +28,7 @@ network:
     - host: "localhost"
       port: 8765
       protocol: http
-      label: "FactoryMind MCP server (HTTP mode)"
+      label: "FactoryMind MCP server (HTTP streamable mode)"
     - host: "localhost"
       port: 8766
       protocol: http
@@ -82,8 +86,9 @@ inference:
   routing: local-only
   deny_cloud: true
   approved_endpoints:
-    - "http://localhost:8000/v1"
-    - "http://localhost:8001/v1"
+    - "http://localhost:11434/v1"    # Ollama — NemoClaw primary (nemotron-3-nano:30b)
+    - "http://localhost:8000/v1"     # DiffusionGemma (reserved)
+    - "http://localhost:8001/v1"     # Gemma4 AR fallback
   privacy:
     - "Simulation state must not leave the device."
     - "Prompt contents (C2 state, CellPlan) must not be logged externally."
