@@ -42,6 +42,7 @@ const quickCommands = [
 ];
 
 const LIVE_FEED_URL = "http://localhost:8766/telemetry/run.jsonl";
+const COMMAND_URL = "http://localhost:8765/command";
 
 function modeLabel(mode: Mode) {
   if (mode === "mock") return "Mock live";
@@ -84,22 +85,50 @@ export function AgentSimPage({
     if (liveUrl !== LIVE_FEED_URL) setLiveUrl(LIVE_FEED_URL);
   }, [liveUrl, setLiveUrl]);
 
-  const send = (text: string) => {
+  const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
     const at = `step ${step}`;
-    setMessages((prev) => [
-      ...prev,
-      { role: "operator", text: trimmed, at },
-      {
-        role: "agent",
-        text: `Queued for Nemoclaw: "${trimmed}". Current sim mode is ${modeLabel(mode)} and ${
-          playing ? "running" : "paused"
-        }.`,
-        at,
-      },
-    ]);
+    setMessages((prev) => [...prev, { role: "operator", text: trimmed, at }]);
     setDraft("");
+
+    // Make sure the dashboard is watching the live feed before the sim moves.
+    if (mode !== "live") setMode("live");
+    if (!playing) setPlaying(true);
+
+    try {
+      const res = await fetch(COMMAND_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instruction: trimmed, steps: 6 }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        steps_run: number;
+        done: boolean;
+        executed: { step: number; action: string; events: string[] }[];
+      };
+      const last = data.executed[data.executed.length - 1];
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "agent",
+          text: `Ran ${data.steps_run} sim step${data.steps_run === 1 ? "" : "s"} on the cell${
+            last ? ` — last: ${last.action}` : ""
+          }${data.done ? " · task complete" : ""}. Watch the live feed.`,
+          at: last ? `step ${last.step}` : at,
+        },
+      ]);
+    } catch (e) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "agent",
+          text: `Sim bridge unreachable (${(e as Error).message}). Start the MCP sim server on :8765 (python -m factorymind.sim.a.mcp_server --http).`,
+          at,
+        },
+      ]);
+    }
   };
 
   const latestRow = latest.d ?? latest.a;
