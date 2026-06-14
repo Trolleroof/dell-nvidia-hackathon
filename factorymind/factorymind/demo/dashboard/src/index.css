@@ -11,18 +11,24 @@
 :root {
   color-scheme: dark;
 
-  --background: #000000;
+  --background: #1a1a1a; /* official dark background */
   --foreground: #ffffff;
-  --muted: #0a0a0a; /* near-black subtle panel */
-  --muted-foreground: #a3a3a3; /* gray secondary text */
-  --faint: #525252; /* tertiary / placeholder gray */
-  --accent: #ffffff; /* white IS the accent */
-  --accent-foreground: #000000; /* black on white (inversion) */
+  --muted: #232323; /* lifted subtle panel */
+  --muted-foreground: #a8a8a8; /* gray secondary text */
+  --faint: #6b6b6b; /* tertiary / placeholder gray */
+  --accent: #ffffff; /* white IS the neutral accent */
+  --accent-foreground: #1a1a1a; /* dark on white (inversion) */
   --border: #ffffff; /* the line system */
-  --border-light: #2a2a2a; /* subtle hairline dividers */
-  --card: #000000;
+  --border-light: #353535; /* subtle hairline dividers */
+  --card: #1a1a1a;
   --card-foreground: #ffffff;
   --ring: #ffffff;
+
+  /* Official Dell × NVIDIA brand values. */
+  --nv: #76b900; /* NVIDIA green */
+  --nv-bright: #8fdc00; /* legible green for text/hover on dark */
+  --dell: #007db8; /* Dell blue */
+  --dell-bright: #2fa4de; /* legible blue for text on dark */
 }
 
 html,
@@ -35,8 +41,8 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: "Source Serif 4", Georgia, serif;
-  font-size: 16px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 15px;
   letter-spacing: 0;
   -webkit-font-smoothing: antialiased;
 }
@@ -138,11 +144,15 @@ body::after {
   text-transform: uppercase;
   color: var(--muted-foreground);
 }
+/* NVIDIA-style green lead on the section rule. */
 .agent-eyebrow::after {
   content: "";
   flex: 1;
   height: 1px;
-  background: var(--border-light);
+  background: linear-gradient(90deg, var(--nv) 0 48px, var(--border-light) 48px);
+}
+.agent-eyebrow span:first-child {
+  color: var(--nv-bright);
 }
 
 .agent-status-inline {
@@ -167,17 +177,18 @@ body::after {
   font-size: 11px;
   letter-spacing: 0.04em;
 }
-/* A filled white registration square — running. Paused = hollow (set inline). */
+/* Green registration square when running; hollow when idle. */
 .agent-status-dot {
   width: 12px;
   height: 12px;
   flex: 0 0 auto;
-  background: var(--foreground);
-  outline: 2px solid var(--foreground);
+  background: var(--nv-bright);
+  outline: 2px solid var(--nv);
   outline-offset: 2px;
 }
 .agent-status-dot.is-idle {
   background: transparent;
+  outline-color: var(--muted-foreground);
 }
 
 .agent-grid {
@@ -239,8 +250,9 @@ body::after {
   border-right: 0;
 }
 .agent-mode-tabs button.is-active {
-  color: var(--accent-foreground);
-  background: var(--foreground);
+  color: var(--nv-bright);
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--nv);
 }
 
 /* Primary = inverted solid (white/black); hover hollows out. */
@@ -249,13 +261,13 @@ body::after {
   padding: 11px 18px;
 }
 .agent-primary {
-  background: var(--foreground);
-  color: var(--accent-foreground);
+  background: var(--nv);
+  color: #000000;
 }
 .agent-primary:hover {
   background: transparent;
-  color: var(--foreground);
-  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--nv-bright);
+  box-shadow: inset 0 0 0 1px var(--nv);
 }
 /* Secondary = outline; hover fills. */
 .agent-secondary {
@@ -290,7 +302,7 @@ body::after {
   gap: 12px;
 }
 .agent-speed-row input[type="range"] {
-  accent-color: var(--foreground);
+  accent-color: var(--nv);
   height: 2px;
 }
 
@@ -316,8 +328,8 @@ body::after {
   padding-bottom: 14px;
 }
 .agent-chat-header strong {
-  font-family: "Playfair Display", Georgia, serif;
-  font-size: 22px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.01em;
   text-transform: none;
@@ -351,20 +363,23 @@ body::after {
   color: var(--faint);
 }
 
-/* Speakers encoded by FORM, not hue: operator inverts, agent outlines. */
+/* Speakers color-coded by brand: operator = Dell blue, agent = NVIDIA green.
+   Sleek left-accent rule + faint tint, not a filled bubble. */
 .agent-message {
   width: 88%;
   padding: 11px 14px;
+  background: var(--muted);
+  border: 1px solid var(--border-light);
 }
 .agent-message.operator {
   align-self: flex-end;
-  background: var(--foreground);
-  color: var(--accent-foreground);
+  border-left: 3px solid var(--dell-bright);
+  background: rgba(56, 182, 255, 0.07);
 }
 .agent-message.agent {
   align-self: flex-start;
-  background: transparent;
-  border: 1px solid var(--border);
+  border-left: 3px solid var(--nv-bright);
+  background: rgba(149, 230, 0, 0.06);
 }
 .agent-message span {
   display: block;
@@ -373,19 +388,18 @@ body::after {
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  opacity: 0.7;
 }
 .agent-message.operator span {
-  color: var(--accent-foreground);
+  color: var(--dell-bright);
 }
 .agent-message.agent span {
-  color: var(--muted-foreground);
+  color: var(--nv-bright);
 }
 .agent-message p {
   margin: 6px 0 0;
-  font-family: "Source Serif 4", Georgia, serif;
-  font-size: 14px;
-  line-height: 1.55;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .agent-composer {
@@ -400,9 +414,9 @@ body::after {
   padding: 12px 2px;
   background: transparent;
   color: var(--foreground);
-  font-family: "Source Serif 4", Georgia, serif;
-  font-size: 15px;
-  line-height: 1.55;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 14px;
+  line-height: 1.6;
   outline: none;
 }
 .agent-composer textarea::placeholder {
@@ -412,17 +426,18 @@ body::after {
 .agent-composer textarea:focus,
 .agent-composer textarea:focus-visible {
   border-bottom-width: 4px;
+  border-bottom-color: var(--nv);
 }
-/* Send = inverted solid with an arrow; hover hollows out. */
+/* Send = NVIDIA-green solid with an arrow; hover hollows out. */
 .agent-composer button {
   padding: 13px;
-  background: var(--foreground);
-  color: var(--accent-foreground);
+  background: var(--nv);
+  color: #000000;
 }
 .agent-composer button:hover {
   background: transparent;
-  color: var(--foreground);
-  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--nv-bright);
+  box-shadow: inset 0 0 0 1px var(--nv);
 }
 
 @media (max-width: 1180px) {

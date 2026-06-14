@@ -19,9 +19,14 @@ export default {
         "card-foreground": "var(--card-foreground)",
         ring: "var(--ring)",
 
-        // ── Legacy aliases → collapsed to monochrome ───────────────────────
-        // Any class the redesign misses degrades to mono instead of breaking
-        // the "no color, ever" rule. Brand hues are intentionally neutralized.
+        // ── Brand accents — restrained punctuation on the mono canvas ──────
+        // Green is the hero accent (NVIDIA), blue is secondary (Dell). Used only
+        // for live/interactive/brand emphasis; structure stays black & white.
+        nvidia: { DEFAULT: "var(--nv)", bright: "var(--nv-bright)" },
+        dell: { DEFAULT: "var(--dell)", bright: "var(--dell-bright)" },
+        cloud: "var(--dell-bright)",
+
+        // Neutral structural aliases.
         ink: "var(--background)",
         panel: "var(--background)",
         panel2: "var(--background)",
@@ -30,18 +35,15 @@ export default {
         text: "var(--foreground)",
         dim: "var(--muted-foreground)",
         faint: "var(--faint)",
-        nvidia: { DEFAULT: "var(--foreground)", bright: "var(--foreground)" },
-        dell: { DEFAULT: "var(--foreground)", bright: "var(--foreground)" },
-        cloud: "var(--foreground)",
         danger: "var(--foreground)",
         warn: "var(--foreground)",
       },
       fontFamily: {
-        // Serif is the hero. Sans is aliased to the body serif so default text
-        // stays in-system; mono carries metadata/labels.
-        display: ['"Playfair Display"', "Georgia", "serif"],
-        serif: ['"Source Serif 4"', "Georgia", "serif"],
-        sans: ['"Source Serif 4"', "Georgia", "serif"],
+        // Official brand spec: monospaced type throughout. Every alias resolves
+        // to the same mono stack so existing class names stay in-system.
+        display: ['"JetBrains Mono"', "ui-monospace", "monospace"],
+        serif: ['"JetBrains Mono"', "ui-monospace", "monospace"],
+        sans: ['"JetBrains Mono"', "ui-monospace", "monospace"],
         mono: ['"JetBrains Mono"', "ui-monospace", "monospace"],
       },
       borderRadius: {

@@ -33,7 +33,5 @@ export interface Aggregate {
   tokSum: number;
 }
 
-export type Mode = "mock" | "replay" | "live";
-
 export const isAR = (m: ModelName): boolean => m === "gemma4";
 export const isDiffusion = (m: ModelName): boolean => m === "diffusiongemma";

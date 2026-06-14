@@ -12,7 +12,6 @@ interface Part {
   x: number;
   y: number;
   placed: boolean;
-  c: string;
 }
 interface SimPart {
   id: string;
@@ -61,9 +60,9 @@ export function CellView({
   ]);
   const placedRef = useRef(0);
   const [parts, setParts] = useState<Part[]>([
-    { id: "part_1", x: 200, y: 230, placed: false, c: "#ffb02e" },
-    { id: "part_2", x: 260, y: 235, placed: false, c: "#38b6ff" },
-    { id: "part_3", x: 320, y: 232, placed: false, c: "#76b900" },
+    { id: "part_1", x: 200, y: 230, placed: false },
+    { id: "part_2", x: 260, y: 235, placed: false },
+    { id: "part_3", x: 320, y: 232, placed: false },
   ]);
   const [frameRefresh, setFrameRefresh] = useState(0);
   const [mockTick, setMockTick] = useState(0);
@@ -88,9 +87,9 @@ export function CellView({
   useEffect(() => {
     placedRef.current = 0;
     setParts([
-      { id: "part_1", x: 200, y: 230, placed: false, c: "#ffb02e" },
-      { id: "part_2", x: 260, y: 235, placed: false, c: "#38b6ff" },
-      { id: "part_3", x: 320, y: 232, placed: false, c: "#76b900" },
+      { id: "part_1", x: 200, y: 230, placed: false },
+      { id: "part_2", x: 260, y: 235, placed: false },
+      { id: "part_3", x: 320, y: 232, placed: false },
     ]);
   }, [resetKey]);
 
@@ -148,9 +147,9 @@ export function CellView({
         if (idx < 0) {
           placedRef.current = 0;
           return [
-            { id: "part_1", x: 200, y: 230, placed: false, c: "#ffb02e" },
-            { id: "part_2", x: 260, y: 235, placed: false, c: "#38b6ff" },
-            { id: "part_3", x: 320, y: 232, placed: false, c: "#76b900" },
+            { id: "part_1", x: 200, y: 230, placed: false },
+            { id: "part_2", x: 260, y: 235, placed: false },
+            { id: "part_3", x: 320, y: 232, placed: false },
           ];
         }
         const n = [...prev];
@@ -189,7 +188,7 @@ export function CellView({
       <h2 className="card-title">
         <span className="tick" />
         Assembly Cell · 2 Arms
-        {showFrame && <span className="ml-auto pill bg-foreground text-background">MuJoCo</span>}
+        {showFrame && <span className="ml-auto pill border-nvidia bg-nvidia text-background">MuJoCo</span>}
         {!showFrame && animatedFallback && <span className="ml-auto pill">Mock live</span>}
       </h2>
       {showFrame && frameSrc ? (
@@ -200,7 +199,7 @@ export function CellView({
             className="block w-full h-[300px] object-cover bg-background"
             onError={() => setFailedFrameSrc(frameSrc)}
           />
-          <div className="absolute left-0 top-0 bg-foreground px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-background">
+          <div className={`absolute left-0 top-0 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-background ${liveMujocoFrame ? "bg-nvidia" : "bg-foreground"}`}>
             {liveMujocoFrame ? "Live · MuJoCo" : "MuJoCo Frame"}
           </div>
         </div>
@@ -220,7 +219,7 @@ export function CellView({
           </g>
         ))}
         {arms.map((a, i) => {
-          const c = "#ffffff";
+          const c = i === 0 ? "#8fdc00" : "#2fa4de";
           const seg1 = 70, seg2 = 58;
           const jx = a.x + Math.sin(a.angle) * seg1;
           const jy = a.base - Math.cos(a.angle) * seg1;
@@ -311,7 +310,7 @@ export function CellView({
                     }}
                     className={`cursor-default border px-2 py-2 text-center font-mono text-[10px] uppercase tracking-[0.1em] transition-colors duration-100 ${
                       active
-                        ? "border-foreground bg-foreground text-background"
+                        ? "border-nvidia bg-nvidia text-background"
                         : "border-border-light text-muted-foreground"
                     }`}
                   >
