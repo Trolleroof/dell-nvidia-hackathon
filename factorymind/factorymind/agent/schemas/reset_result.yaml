@@ -1,0 +1,11 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: ResetResult
+description: "Output of reset-episode — initial cell state plus a human-readable summary"
+type: object
+properties:
+  state:
+    $ref: "./c2_state.yaml"
+  summary:
+    type: string
+    description: "One-line summary, e.g. 'Cell reset (seed=0): 3 parts in bin_a, robots at home, stations empty.'"
+required: [state, summary]

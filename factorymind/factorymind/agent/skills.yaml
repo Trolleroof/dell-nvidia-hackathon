@@ -1,0 +1,16 @@
+# FactoryMind — skill workspace manifest
+# Each entry maps to a skills/<name>/SKILL.md file.
+# Order here = order they appear in the agent's tool list.
+
+skills:
+  # Core control loop (model-invocable, not user-invocable)
+  - path: ./skills/read-cell
+  - path: ./skills/plan-action
+  - path: ./skills/step-cell
+
+  # Episode management (user-invocable)
+  - path: ./skills/reset-episode
+  - path: ./skills/run-loop
+
+  # Observability (user-invocable, also model-invocable)
+  - path: ./skills/monitor-latency

@@ -1,0 +1,97 @@
+# OpenShell Security Policy — FactoryMind Controller
+# Loaded by NemoClaw at agent startup. Enforced out-of-process — the LLM cannot override these.
+#
+# Principle: deny-by-default on network and filesystem; allow only what the
+# control loop needs. Security decisions are independent of model output.
+
+version: "1.0"
+name: "factorymind-controller-policy"
+description: "Sandbox policy for the FactoryMind always-on assembly cell controller"
+
+# ── Network egress ─────────────────────────────────────────────────────────────
+# Default: DENY all outbound. No data leaves the GB10 during the demo.
+network:
+  default: deny
+  allow:
+    - host: "localhost"
+      port: 8000
+      protocol: http
+      label: "DiffusionGemma inference endpoint (primary)"
+    - host: "localhost"
+      port: 8001
+      protocol: http
+      label: "Gemma4 AR inference endpoint (fallback)"
+    - host: "localhost"
+      port: 8765
+      protocol: http
+      label: "FactoryMind MCP server (HTTP mode)"
+    - host: "localhost"
+      port: 8766
+      protocol: http
+      label: "Telemetry SSE server (Role C dashboard feed)"
+  log_approved: true       # every approved outbound request is logged
+  deny_cloud: true         # block *.openai.com, *.anthropic.com, *.googleapis.com, etc.
+
+# ── Filesystem ────────────────────────────────────────────────────────────────
+# Read from the project; write only to telemetry/.
+filesystem:
+  read:
+    - path: "./factorymind/"
+      label: "Agent code, skills, schemas, sim"
+    - path: "./telemetry/"
+      label: "Read back recorded JSONL for replay"
+    - path: "./models/"
+      label: "Model weights (read-only mount)"
+  write:
+    - path: "./telemetry/"
+      label: "Write C5 telemetry JSONL — Role C reads this"
+  deny:
+    - path: "/etc/"
+    - path: "/usr/"
+    - path: "/var/"
+    - path: "/root/"
+    - path: "~/.ssh/"
+    - path: "~/.aws/"
+    - path: "~/.config/"
+
+# ── Process execution ──────────────────────────────────────────────────────────
+# The agent may only spawn the MCP server subprocess. No shell access.
+process:
+  allow_exec:
+    - "python3"                   # MCP server subprocess
+    - "factorymind-sim-mcp"       # installed entry point
+  deny_exec:
+    - "bash"
+    - "sh"
+    - "zsh"
+    - "curl"
+    - "wget"
+    - "rm"
+    - "sudo"
+    - "docker"
+    - "pip"
+    - "npm"
+  resource_limits:
+    max_memory_mb: 4096
+    max_cpu_percent: 80
+    max_subprocesses: 4
+
+# ── Inference routing ──────────────────────────────────────────────────────────
+# NemoClaw enforces this — the agent cannot redirect inference to a cloud provider.
+inference:
+  routing: local-only
+  deny_cloud: true
+  approved_endpoints:
+    - "http://localhost:8000/v1"
+    - "http://localhost:8001/v1"
+  privacy:
+    - "Simulation state must not leave the device."
+    - "Prompt contents (C2 state, CellPlan) must not be logged externally."
+    - "Telemetry JSONL is written locally to ./telemetry/ only."
+
+# ── Audit ─────────────────────────────────────────────────────────────────────
+audit:
+  log_path: "./telemetry/openshell-audit.jsonl"
+  log_level: "info"             # info | debug | warn
+  log_tool_calls: true          # log every MCP tool invocation
+  log_policy_violations: true   # log every denied action

@@ -1,0 +1,37 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: CellPlan
+description: "C1 action schema — one RobotCommand per robot, emitted by the agent each control tick"
+type: object
+properties:
+  plan:
+    type: string
+    maxLength: 80
+    description: "One-line cell-level intent"
+  robots:
+    type: array
+    minItems: 2
+    maxItems: 2
+    description: "Exactly one entry per robot (id 0 and id 1)"
+    items:
+      $ref: "#/$defs/RobotCommand"
+required: [plan, robots]
+
+$defs:
+  RobotCommand:
+    type: object
+    properties:
+      id:
+        type: integer
+        minimum: 0
+        description: "Robot index"
+      action:
+        type: string
+        enum: [move, grip, release, hold]
+      target:
+        type: string
+        enum: [bin_a, bin_b, station_1, station_2, part_1, part_2, part_3, home]
+        description: "Named target — must be from this enum; never invent a name"
+      reason:
+        type: string
+        description: "One-sentence rationale (optional but encouraged)"
+    required: [id, action, target]

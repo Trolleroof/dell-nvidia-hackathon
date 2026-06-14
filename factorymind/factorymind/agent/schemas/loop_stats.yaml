@@ -1,0 +1,30 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: LoopStats
+description: "Episode summary returned by the run-loop skill on completion"
+type: object
+properties:
+  steps:
+    type: integer
+    description: "Total control ticks executed"
+  done:
+    type: boolean
+    description: "True if the task completed (all parts at station_1)"
+  wall_seconds:
+    type: number
+    description: "Total wall-clock time in seconds"
+  avg_latency_ms:
+    type: number
+    description: "Average plan-action latency across all steps (ms)"
+  model:
+    type: string
+    description: "Model used during this episode"
+  retries:
+    type: integer
+    minimum: 0
+    description: "Total schema-parse retries across all steps"
+  log:
+    type: array
+    description: "Per-step latency entries — also fed into monitor-latency"
+    items:
+      $ref: "./latency_entry.yaml"
+required: [steps, done, wall_seconds, avg_latency_ms, model, retries, log]

@@ -1,0 +1,50 @@
+{
+  "name": "factorymind-controller",
+  "version": "0.1.0",
+  "soul": "./SOUL.md",
+
+  "models": {
+    "providers": {
+      "local-gb10": {
+        "type": "openai-compatible",
+        "baseUrl": "http://localhost:8000/v1",
+        "models": [
+          "diffusiongemma-18b",
+          "gemma4-ar"
+        ]
+      }
+    },
+    "default": "local-gb10/diffusiongemma-18b",
+    "fallback": "local-gb10/gemma4-ar"
+  },
+
+  "mcp": {
+    "servers": {
+      "factorymind-sim": {
+        "command": "python3",
+        "args": ["-m", "factorymind.sim.mcp_server"],
+        "transport": "stdio",
+        "description": "FactoryMind cell sim — tools: reset_cell, get_cell_state, step_cell, list_targets"
+      }
+    }
+  },
+
+  "skills": "./skills.yaml",
+
+  "memory": {
+    "enabled": true,
+    "scope": "session",
+    "include": ["latency_log"]
+  },
+
+  "shell": {
+    "network": {
+      "allow": ["localhost:8000"],
+      "deny": ["*"]
+    },
+    "filesystem": {
+      "read": ["./"],
+      "write": []
+    }
+  }
+}

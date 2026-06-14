@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-factorymind-sim-mcp = "factorymind.sim.a.mcp_server:main"
+factorymind-sim-mcp = "factorymind.sim.mcp_server:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
