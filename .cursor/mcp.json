@@ -2,7 +2,7 @@
   "mcpServers": {
     "factorymind-sim": {
       "command": "/Users/emanschool/dell-nvidia-hackathon/factorymind/.venv/bin/python",
-      "args": ["-m", "factorymind.sim.mcp_server"],
+      "args": ["-m", "factorymind.sim.a.mcp_server"],
       "cwd": "/Users/emanschool/dell-nvidia-hackathon/factorymind"
     }
   }

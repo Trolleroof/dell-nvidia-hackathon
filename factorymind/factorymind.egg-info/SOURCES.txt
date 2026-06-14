@@ -13,3 +13,13 @@ factorymind/sim/mcp_server.py
 factorymind/sim/mock_cell.py
 factorymind/sim/oracle.py
 factorymind/sim/smoke_test.py
+factorymind/sim/a/__init__.py
+factorymind/sim/a/cell.py
+factorymind/sim/a/config.py
+factorymind/sim/a/env_factory.py
+factorymind/sim/a/mcp_server.py
+factorymind/sim/a/mujoco_cell.py
+factorymind/sim/a/oracle.py
+factorymind/sim/a/smoke_test.py
+factorymind/sim/a/state.py
+factorymind/sim/a/targets.py
