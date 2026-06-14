@@ -1,4 +1,4 @@
-"""Offscreen MuJoCo rendering — PNG frames from the cell scene."""
+"""Offscreen MuJoCo rendering — 720p dashboard camera for cell scenes."""
 
 from __future__ import annotations
 
@@ -7,8 +7,13 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-DEFAULT_WIDTH = 640
-DEFAULT_HEIGHT = 480
+DASHBOARD_WIDTH = 1280
+DASHBOARD_HEIGHT = 720
+DASHBOARD_CAMERA = "dashboard"
+
+# Legacy default (kept for callers that omit size)
+DEFAULT_WIDTH = DASHBOARD_WIDTH
+DEFAULT_HEIGHT = DASHBOARD_HEIGHT
 
 
 def default_frames_dir() -> Path:
@@ -16,20 +21,31 @@ def default_frames_dir() -> Path:
 
 
 class CellRenderer:
-    """Headless renderer for assets/cell.xml scenes."""
+    """Headless renderer for assets/cell.xml — fixed dashboard camera when present."""
 
     def __init__(
         self,
         model: mujoco.MjModel,
-        width: int = DEFAULT_WIDTH,
-        height: int = DEFAULT_HEIGHT,
+        width: int = DASHBOARD_WIDTH,
+        height: int = DASHBOARD_HEIGHT,
+        camera: str | int | None = DASHBOARD_CAMERA,
     ) -> None:
         self._model = model
         self._renderer = mujoco.Renderer(model, height, width)
+        self._camera = camera
+        cam_id = -1
+        if isinstance(camera, str):
+            cam_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, camera)
+        elif isinstance(camera, int):
+            cam_id = camera
+        self._camera_id = cam_id if cam_id >= 0 else None
 
     def render_rgb(self, data: mujoco.MjData) -> np.ndarray:
         """Return H×W×3 uint8 RGB array."""
-        self._renderer.update_scene(data)
+        if self._camera_id is not None:
+            self._renderer.update_scene(data, camera=self._camera_id)
+        else:
+            self._renderer.update_scene(data)
         return self._renderer.render()
 
     def save_png(self, data: mujoco.MjData, path: Path) -> Path:
@@ -50,9 +66,10 @@ def render_scene_to_png(
     model: mujoco.MjModel,
     data: mujoco.MjData,
     path: Path | str,
-    width: int = DEFAULT_WIDTH,
-    height: int = DEFAULT_HEIGHT,
+    width: int = DASHBOARD_WIDTH,
+    height: int = DASHBOARD_HEIGHT,
+    camera: str | int | None = DASHBOARD_CAMERA,
 ) -> Path:
     """One-shot render helper."""
-    renderer = CellRenderer(model, width=width, height=height)
+    renderer = CellRenderer(model, width=width, height=height, camera=camera)
     return renderer.save_png(data, Path(path))

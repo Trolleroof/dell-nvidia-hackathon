@@ -16,8 +16,16 @@ def create_cell_env(config: SimConfig | None = None) -> CellEnv:
     if cfg.backend == "mujoco":
         from factorymind.sim.a.mujoco_cell import MujocoCellEnv
 
-        return MujocoCellEnv(num_robots=cfg.num_robots, seed=cfg.default_seed)
-    return MockCellEnv(num_robots=cfg.num_robots, seed=cfg.default_seed)
+        return MujocoCellEnv(
+            num_robots=cfg.num_robots,
+            seed=cfg.default_seed,
+            scenario=cfg.scenario,
+        )
+    return MockCellEnv(
+        num_robots=cfg.num_robots,
+        seed=cfg.default_seed,
+        scenario=cfg.scenario,
+    )
 
 
 def get_cell_env() -> CellEnv:

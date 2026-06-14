@@ -1,30 +1,32 @@
-"""Derive joint targets from MJCF site positions — keeps poses in sync with cell.xml."""
+"""Load precomputed Franka joint poses from assets/poses.json."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import mujoco
+import numpy as np
 
-# arm{N}_base body origin in assets/cell.xml (world frame)
-ARM_BASES: dict[int, tuple[float, float, float]] = {
-    0: (0.15, 0.35, 0.44),
-    1: (0.15, -0.15, 0.44),
-}
+ARM_JOINT_NAMES = (
+    "joint1",
+    "joint2",
+    "joint3",
+    "joint4",
+    "joint5",
+    "joint6",
+    "joint7",
+)
 
-# arm0_ee / arm1_ee sit 0.08 m below the z slide joint origin
-EE_Z_OFFSET = 0.08
+# Menagerie panda home keyframe (7 arm joints, radians)
+HOME_QPOS = [0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853]
 
-# Vertical approach offset (m) — lower for grip, default for hover
-APPROACH_Z = {
+APPROACH_Z: dict[str, float] = {
     "default": 0.0,
     "part_1": -0.02,
     "part_2": -0.02,
     "part_3": -0.02,
 }
-
-HOME_QPOS_ARM0 = {"x": 0.05, "y": 0.0, "z": 0.12}
-HOME_QPOS_ARM1 = {"x": 0.05, "y": 0.0, "z": 0.12}
 
 SITE_TARGETS = (
     "bin_a",
@@ -36,62 +38,40 @@ SITE_TARGETS = (
     "part_3",
 )
 
+POSES_PATH = Path(__file__).resolve().parent / "assets" / "poses.json"
+
 
 def scene_path() -> Path:
     return Path(__file__).resolve().parent / "assets" / "cell.xml"
 
 
-def world_to_qpos(
-    target_xyz: tuple[float, float, float],
-    arm_id: int,
-    z_delta: float = 0.0,
-) -> dict[str, float]:
-    """Convert a world-frame point to slide-joint values for one arm."""
-    bx, by, bz = ARM_BASES[arm_id]
-    tx, ty, tz = target_xyz
-    tz_eff = tz + z_delta
+def _joint_dict(arm_id: int, qpos_list: list[float]) -> dict[str, float]:
     return {
-        "x": round(tx - bx, 4),
-        "y": round(ty - by, 4),
-        "z": round(tz_eff + EE_Z_OFFSET - bz, 4),
+        name: round(float(qpos_list[i]), 6)
+        for i, name in enumerate(ARM_JOINT_NAMES)
+        if i < len(qpos_list)
     }
 
 
-def _site_xyz(model: mujoco.MjModel, name: str) -> tuple[float, float, float]:
-    sid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name)
-    if sid < 0:
-        raise KeyError(name)
-    pos = model.site_pos[sid]
-    return float(pos[0]), float(pos[1]), float(pos[2])
+def load_poses_json(path: Path | None = None) -> dict:
+    p = path or POSES_PATH
+    if not p.exists():
+        raise FileNotFoundError(
+            f"Missing {p} — run: python -m factorymind.sim.a.solve_poses"
+        )
+    return json.loads(p.read_text())
 
 
-def build_qpos_tables(model: mujoco.MjModel | None = None) -> tuple[dict, dict]:
-    """Build TARGET_QPOS (arm0) and TARGET_QPOS_ARM1 from world-frame site positions."""
-    if model is None:
-        model = mujoco.MjModel.from_xml_path(str(scene_path()))
+def build_qpos_tables(
+    model: mujoco.MjModel | None = None,
+    poses: dict | None = None,
+) -> tuple[dict[str, dict[str, float]], dict[str, dict[str, float]]]:
+    """Return TARGET_QPOS tables for arm0 and arm1 from poses.json."""
+    if poses is None:
+        poses = load_poses_json()
 
-    data = mujoco.MjData(model)
-    mujoco.mj_forward(model, data)
-
-    arm0: dict[str, dict[str, float]] = {"home": dict(HOME_QPOS_ARM0)}
-    arm1: dict[str, dict[str, float]] = {"home": dict(HOME_QPOS_ARM1)}
-
-    for name in SITE_TARGETS:
-        if name.startswith("part_"):
-            bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
-            if bid < 0:
-                continue
-            pos = data.xpos[bid]
-        else:
-            sid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name)
-            if sid < 0:
-                continue
-            pos = data.site_xpos[sid]
-        xyz = float(pos[0]), float(pos[1]), float(pos[2])
-        z_delta = APPROACH_Z.get(name, APPROACH_Z["default"])
-        arm0[name] = world_to_qpos(xyz, arm_id=0, z_delta=z_delta)
-        arm1[name] = world_to_qpos(xyz, arm_id=1, z_delta=z_delta)
-
+    arm0 = {name: _joint_dict(0, q) for name, q in poses["arm0"].items()}
+    arm1 = {name: _joint_dict(1, q) for name, q in poses["arm1"].items()}
     return arm0, arm1
 
 
@@ -101,9 +81,50 @@ def ee_distance_to_site(
     arm_id: int,
     site_name: str,
 ) -> float:
-    """Euclidean distance (m) from end-effector to a named site."""
+    """Euclidean distance (m) from end-effector to a named site/body."""
     ee_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, f"arm{arm_id}_ee")
-    site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
     ee = data.site_xpos[ee_id]
-    sp = data.site_xpos[site_id]
-    return float(((ee - sp) ** 2).sum() ** 0.5)
+    if site_name.startswith("part_"):
+        bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, site_name)
+        tgt = data.xpos[bid]
+    else:
+        sid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
+        tgt = data.site_xpos[sid]
+    return float(np.linalg.norm(ee - tgt))
+
+
+def apply_arm_qpos(
+    model: mujoco.MjModel,
+    data: mujoco.MjData,
+    arm_id: int,
+    qpos: dict[str, float],
+    *,
+    gripper_open: bool = True,
+) -> None:
+    """Set arm joint positions (and optional gripper width)."""
+    for jname, val in qpos.items():
+        full = f"arm{arm_id}_{jname}"
+        jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, full)
+        if jid < 0:
+            continue
+        adr = int(model.jnt_qposadr[jid])
+        data.qpos[adr] = val
+        idx = int(jname.replace("joint", ""))
+        act = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"arm{arm_id}_actuator{idx}")
+        if act >= 0:
+            data.ctrl[act] = val
+    finger = 0.04 if gripper_open else 0.0
+    for fj in (1, 2):
+        jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"arm{arm_id}_finger_joint{fj}")
+        if jid >= 0:
+            data.qpos[int(model.jnt_qposadr[jid])] = finger
+    mujoco.mj_forward(model, data)
+
+
+def read_arm_qpos(model: mujoco.MjModel, data: mujoco.MjData, arm_id: int) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for jname in ARM_JOINT_NAMES:
+        jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"arm{arm_id}_{jname}")
+        if jid >= 0:
+            out[jname] = float(data.qpos[int(model.jnt_qposadr[jid])])
+    return out

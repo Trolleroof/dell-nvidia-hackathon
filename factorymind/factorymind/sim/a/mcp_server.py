@@ -9,13 +9,17 @@ from __future__ import annotations
 
 import argparse
 import json
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
 
 from factorymind.agent.schemas import CellPlan
-from factorymind.sim.a.env_factory import get_cell_env
+from dataclasses import replace
+from factorymind.sim.a.env_factory import get_cell_env, reset_cell_env
+from factorymind.sim.a.frame_export import latest_frame_path, read_latest_frame_meta
 from factorymind.sim.a.targets import TARGET_POSES
+
+Scenario = Literal["default", "misaligned", "empty_bin"]
 
 mcp = FastMCP(
     "FactoryMind Sim",
@@ -23,15 +27,17 @@ mcp = FastMCP(
         "MuJoCo assembly cell simulator for FactoryMind. "
         "Use reset_cell before an episode, get_cell_state to read C2 state, "
         "and step_cell with a validated CellPlan (C1 schema). "
-        "Named targets: bin_a, station_1, part_1/2/3, home."
+        "Named targets: home, bin_a, bin_b, station_1, station_2, part_1/2/3. "
+        "Dashboard frames: frames/latest.png (1280×720) updated on render_cell_frame."
     ),
 )
 
 
 @mcp.tool()
-def reset_cell(seed: int = 0) -> dict[str, Any]:
-    """Reset the cell to the initial pick-and-place scenario."""
-    cell = get_cell_env()
+def reset_cell(seed: int = 0, scenario: Scenario = "default") -> dict[str, Any]:
+    """Reset the cell. scenario: default | misaligned | empty_bin."""
+    cfg = replace(get_config(), scenario=scenario, default_seed=seed)
+    cell = reset_cell_env(cfg)
     return cell.reset(seed)
 
 
@@ -65,6 +71,18 @@ def render_cell_frame(filename: str = "") -> str:
     return str(path)
 
 
+@mcp.tool()
+def get_latest_frame() -> str:
+    """Return path + metadata for the dashboard frame (frames/latest.png)."""
+    meta = read_latest_frame_meta()
+    if meta is None:
+        latest = latest_frame_path()
+        if latest.is_file():
+            return json.dumps({"path": str(latest.resolve()), "step": None})
+        return "No frame yet — call render_cell_frame or enable FACTORYMIND_SIM_AUTO_FRAME=1"
+    return json.dumps(meta)
+
+
 @mcp.resource("factorymind://schema/c2")
 def state_schema() -> str:
     """C2 sim-state JSON schema reference."""
@@ -81,7 +99,7 @@ def state_schema() -> str:
             ],
             "parts": [{"id": "part_3", "pos": [0, 0, 0], "at": "bin_a|station_1|gripper_0|..."}],
             "stations": [{"id": "station_1", "status": "empty|occupied|done"}],
-            "events": ["pick_success", "collision", "task_complete"],
+            "events": ["pick_success", "collision", "task_complete", "scenario_misaligned"],
             "done": False,
         },
         indent=2,
@@ -98,6 +116,15 @@ def action_schema() -> str:
 def target_lookup() -> str:
     """Named target → pose lookup table."""
     return json.dumps(TARGET_POSES, indent=2)
+
+
+@mcp.resource("factorymind://frame/latest")
+def latest_frame_resource() -> str:
+    """Dashboard frame sidecar metadata (path, step, width, height)."""
+    meta = read_latest_frame_meta()
+    if meta is None:
+        return json.dumps({"path": str(latest_frame_path()), "available": False}, indent=2)
+    return json.dumps({**meta, "available": True}, indent=2)
 
 
 def main() -> None:

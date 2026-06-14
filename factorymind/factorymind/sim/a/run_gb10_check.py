@@ -25,6 +25,14 @@ def _try_render(backend: str) -> bool:
 def main() -> None:
     os.environ["FACTORYMIND_SIM_BACKEND"] = "mujoco"
 
+    poses = Path(__file__).resolve().parent / "assets" / "poses.json"
+    cell = Path(__file__).resolve().parent / "assets" / "cell.xml"
+    if not poses.is_file() or (cell.is_file() and cell.stat().st_mtime > poses.stat().st_mtime):
+        print("=== Regenerating poses.json ===")
+        rc = subprocess.call([sys.executable, "-m", "factorymind.sim.a.solve_poses"], env=os.environ.copy())
+        if rc != 0:
+            raise SystemExit("solve_poses failed — run build_cell first")
+
     steps = [
         ("factorymind.sim.a.smoke_test", "Smoke test"),
         ("factorymind.sim.a.verify_poses", "Pose verification"),

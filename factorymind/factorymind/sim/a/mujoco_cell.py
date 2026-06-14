@@ -1,17 +1,34 @@
-"""MuJoCo cell — physics backend."""
+"""MuJoCo cell — dual Franka pandas with interpolated joint control."""
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import mujoco
 import numpy as np
 
 from factorymind.agent.schemas import CellPlan, RobotCommand
-from factorymind.sim.a.render import CellRenderer, default_frames_dir
+from factorymind.sim.a.build_cell import PART_DEFAULTS
+from factorymind.sim.a.pose_lookup import ARM_JOINT_NAMES, apply_arm_qpos, read_arm_qpos
+from factorymind.sim.a.frame_export import publish_latest_frame
+from factorymind.sim.a.render import CellRenderer, DASHBOARD_HEIGHT, DASHBOARD_WIDTH, default_frames_dir
 from factorymind.sim.a.state import CellState, PartState, RobotState, StationState
 from factorymind.sim.a.targets import TARGET_POSES, TARGET_QPOS, TARGET_QPOS_ARM1
+
+Scenario = Literal["default", "misaligned", "empty_bin"]
+
+INTERP_STEPS = 80
+INTERP_ALPHA = 0.12
+PHYSICS_SUBSTEPS = 20
+
+# Part offsets for optional reset scenarios (metres)
+MISALIGNED_OFFSETS = {
+    "part_1": (0.06, 0.04, 0.0),
+    "part_2": (0.05, -0.03, 0.0),
+    "part_3": (-0.04, 0.05, 0.0),
+}
 
 
 def _scene_path() -> Path:
@@ -19,16 +36,22 @@ def _scene_path() -> Path:
 
 
 class MujocoCellEnv:
-    """MuJoCo-backed cell. Uses precomputed joint targets from targets.py."""
+    """MuJoCo-backed cell with Menagerie Franka arms."""
 
     num_robots: int
 
-    def __init__(self, num_robots: int = 2, seed: int = 0) -> None:
+    def __init__(
+        self,
+        num_robots: int = 2,
+        seed: int = 0,
+        scenario: Scenario = "default",
+    ) -> None:
         path = _scene_path()
         if not path.exists():
             raise FileNotFoundError(f"Missing MJCF scene: {path}")
         self.num_robots = num_robots
         self.seed = seed
+        self.scenario: Scenario = scenario
         self._model = mujoco.MjModel.from_xml_path(str(path))
         self._data = mujoco.MjData(self._model)
         self._rng = np.random.default_rng(seed)
@@ -40,6 +63,8 @@ class MujocoCellEnv:
         self._robot_pose: list[str] = ["home", "home"]
         self._part_at = {"part_1": "bin_a", "part_2": "bin_a", "part_3": "bin_a"}
         self._station_status = {"station_1": "empty", "station_2": "empty"}
+        self._arm_goal: list[dict[str, float] | None] = [None, None]
+        self._interp_remaining = 0
         self._renderer: CellRenderer | None = None
         self._frames_dir = default_frames_dir()
         self.reset(seed)
@@ -55,7 +80,17 @@ class MujocoCellEnv:
         self._gripper_closed = [False] * self.num_robots
         self._holding = [None] * self.num_robots
         self._robot_pose = ["home"] * self.num_robots
-        self._part_at = {"part_1": "bin_a", "part_2": "bin_a", "part_3": "bin_a"}
+        self._arm_goal = [None] * self.num_robots
+        self._interp_remaining = 0
+
+        if self.scenario == "empty_bin":
+            self._part_at = {}
+            self._events.append("scenario_empty_bin")
+        else:
+            self._part_at = {"part_1": "bin_a", "part_2": "bin_a", "part_3": "bin_a"}
+            if self.scenario == "misaligned":
+                self._events.append("scenario_misaligned")
+
         self._station_status = {"station_1": "empty", "station_2": "empty"}
         self._apply_home_pose()
         self._set_part_positions()
@@ -75,6 +110,8 @@ class MujocoCellEnv:
             )
         parts = []
         for part_id in ("part_1", "part_2", "part_3"):
+            if part_id not in self._part_at:
+                continue
             pos = self._part_position(part_id)
             parts.append(PartState(id=part_id, pos=pos, at=self._part_at[part_id]))
         stations = [
@@ -102,13 +139,11 @@ class MujocoCellEnv:
         return self._data
 
     def render_rgb(self) -> np.ndarray:
-        """Offscreen RGB frame (H×W×3 uint8) of the current sim state."""
         if self._renderer is None:
             self._renderer = CellRenderer(self._model)
         return self._renderer.render_rgb(self._data)
 
     def save_frame(self, path: str | Path | None = None) -> Path:
-        """Save current state as PNG. Default: sim/a/frames/step_XXXX.png"""
         if self._renderer is None:
             self._renderer = CellRenderer(self._model)
         if path is None:
@@ -117,7 +152,15 @@ class MujocoCellEnv:
             out = Path(path)
             if not out.is_absolute():
                 out = self._frames_dir / out
-        return self._renderer.save_png(self._data, out)
+        saved = self._renderer.save_png(self._data, out)
+        publish_latest_frame(
+            saved,
+            step=self._step,
+            width=DASHBOARD_WIDTH,
+            height=DASHBOARD_HEIGHT,
+            frames_dir=self._frames_dir,
+        )
+        return saved
 
     def step(self, plan: CellPlan) -> dict[str, Any]:
         self._events = []
@@ -129,7 +172,7 @@ class MujocoCellEnv:
                 continue
             self._apply_command(cmd)
 
-        self._simulate_physics(steps=50)
+        self._simulate_motion_and_physics()
         self._check_collisions()
 
         placed = sum(1 for at in self._part_at.values() if at == "station_1")
@@ -137,6 +180,12 @@ class MujocoCellEnv:
             self._done = True
             if "task_complete" not in self._events:
                 self._events.append("task_complete")
+
+        if os.environ.get("FACTORYMIND_SIM_AUTO_FRAME") == "1":
+            try:
+                self.save_frame()
+            except Exception:
+                pass
 
         return self.get_state()
 
@@ -150,7 +199,8 @@ class MujocoCellEnv:
             if q is None:
                 self._events.append("invalid_target")
                 return
-            self._move_arm(cmd.id, q)
+            self._arm_goal[cmd.id] = dict(q)
+            self._interp_remaining = max(self._interp_remaining, INTERP_STEPS)
             self._robot_pose[cmd.id] = cmd.target
             return
 
@@ -165,6 +215,7 @@ class MujocoCellEnv:
             self._gripper_closed[cmd.id] = True
             self._holding[cmd.id] = part_id
             self._part_at[part_id] = f"gripper_{cmd.id}"
+            self._close_gripper(cmd.id)
             self._events.append("pick_success")
             return
 
@@ -183,33 +234,71 @@ class MujocoCellEnv:
             self._part_at[part_id] = station
             self._station_status[station] = "occupied"
             self._place_part_on_station(part_id, station)
+            self._open_gripper(cmd.id)
             self._events.append("place_success")
 
-    def _move_arm(self, robot_id: int, qpos: dict[str, float]) -> None:
-        for axis, value in qpos.items():
-            full = f"arm{robot_id}_{axis}"
-            jid = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_JOINT, full)
-            if jid < 0:
+    def _interpolate_arms(self) -> None:
+        for i in range(self.num_robots):
+            goal = self._arm_goal[i]
+            if goal is None:
                 continue
-            adr = self._model.jnt_qposadr[jid]
-            self._data.qpos[adr] = value
-            act_name = f"act_{full}"
-            aid = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_ACTUATOR, act_name)
-            if aid >= 0:
-                self._data.ctrl[aid] = value
-        mujoco.mj_forward(self._model, self._data)
+            current = read_arm_qpos(self._model, self._data, i)
+            blended: dict[str, float] = {}
+            settled = True
+            for jname in ARM_JOINT_NAMES:
+                cur = current.get(jname, 0.0)
+                tgt = goal.get(jname, cur)
+                nxt = cur + INTERP_ALPHA * (tgt - cur)
+                if abs(nxt - tgt) > 1e-4:
+                    settled = False
+                blended[jname] = nxt
+            apply_arm_qpos(
+                self._model,
+                self._data,
+                i,
+                blended,
+                gripper_open=not self._gripper_closed[i],
+            )
+            if settled:
+                self._arm_goal[i] = None
+
+    def _simulate_motion_and_physics(self) -> None:
+        steps = max(INTERP_STEPS if self._interp_remaining else 0, PHYSICS_SUBSTEPS)
+        for _ in range(steps):
+            if self._interp_remaining > 0:
+                self._interpolate_arms()
+                self._interp_remaining -= 1
+            mujoco.mj_step(self._model, self._data)
+            self._sync_gripped_parts()
+
+    def _close_gripper(self, robot_id: int) -> None:
+        for fj in (1, 2):
+            jid = mujoco.mj_name2id(
+                self._model, mujoco.mjtObj.mjOBJ_JOINT, f"arm{robot_id}_finger_joint{fj}"
+            )
+            if jid >= 0:
+                self._data.qpos[int(self._model.jnt_qposadr[jid])] = 0.0
+        act8 = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"arm{robot_id}_actuator8")
+        if act8 >= 0:
+            self._data.ctrl[act8] = 0.0
+
+    def _open_gripper(self, robot_id: int) -> None:
+        for fj in (1, 2):
+            jid = mujoco.mj_name2id(
+                self._model, mujoco.mjtObj.mjOBJ_JOINT, f"arm{robot_id}_finger_joint{fj}"
+            )
+            if jid >= 0:
+                self._data.qpos[int(self._model.jnt_qposadr[jid])] = 0.04
+        act8 = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"arm{robot_id}_actuator8")
+        if act8 >= 0:
+            self._data.ctrl[act8] = 255.0
 
     def _apply_home_pose(self) -> None:
         for i in range(self.num_robots):
             table = TARGET_QPOS_ARM1 if i == 1 else TARGET_QPOS
             home = table.get("home", {})
             if home:
-                self._move_arm(i, home)
-
-    def _simulate_physics(self, steps: int = 50) -> None:
-        for _ in range(steps):
-            mujoco.mj_step(self._model, self._data)
-            self._sync_gripped_parts()
+                apply_arm_qpos(self._model, self._data, i, home)
 
     def _sync_gripped_parts(self) -> None:
         for i in range(self.num_robots):
@@ -230,13 +319,19 @@ class MujocoCellEnv:
         return [float(pos[0]), float(pos[1]), float(pos[2])]
 
     def _set_part_positions(self) -> None:
-        defaults = {
-            "part_1": (0.22, 0.12, 0.46),
-            "part_2": (0.25, 0.15, 0.46),
-            "part_3": (0.28, 0.18, 0.46),
-        }
-        for part_id, (x, y, z) in defaults.items():
-            self._set_body_pos(part_id, [x, y, z])
+        if self.scenario == "empty_bin":
+            for part_id in PART_DEFAULTS:
+                self._set_body_pos(part_id, [0.0, 0.0, -1.0])
+            return
+
+        for part_id, base in PART_DEFAULTS.items():
+            pos = list(base)
+            if self.scenario == "misaligned":
+                dx, dy, dz = MISALIGNED_OFFSETS.get(part_id, (0.0, 0.0, 0.0))
+                pos[0] += dx
+                pos[1] += dy
+                pos[2] += dz
+            self._set_body_pos(part_id, pos)
 
     def _set_body_pos(self, body_name: str, pos: list[float]) -> None:
         bid = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_BODY, body_name)
@@ -257,11 +352,15 @@ class MujocoCellEnv:
         return None
 
     def _check_collisions(self) -> None:
-        """Emit collision events when arm geoms contact table or parts."""
-        arm_geoms = {
-            mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_GEOM, n)
-            for n in ("arm0_gripper", "arm1_gripper", "arm0_link", "arm1_link")
-        }
+        arm_prefixes = ("arm0_hand", "arm1_hand", "arm0_link7", "arm1_link7")
+        arm_geoms = set()
+        for name in arm_prefixes:
+            bid = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_BODY, name)
+            if bid < 0:
+                continue
+            for gi in range(self._model.ngeom):
+                if self._model.geom_bodyid[gi] == bid:
+                    arm_geoms.add(gi)
         for i in range(self._data.ncon):
             con = self._data.contact[i]
             g1, g2 = int(con.geom1), int(con.geom2)
@@ -269,3 +368,13 @@ class MujocoCellEnv:
                 if "collision" not in self._events:
                     self._events.append("collision")
                 break
+
+    # Back-compat for verify_poses
+    def _move_arm(self, robot_id: int, qpos: dict[str, float]) -> None:
+        apply_arm_qpos(
+            self._model,
+            self._data,
+            robot_id,
+            qpos,
+            gripper_open=not self._gripper_closed[robot_id],
+        )
