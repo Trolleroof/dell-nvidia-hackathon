@@ -239,7 +239,7 @@ React/TypeScript + Vite + Tailwind + a charting lib (Recharts/Chart.js) for the 
 
 ---
 
-## Role D — Models & Box (Weights, Serving, Scripts, GB10 First Hour)
+## NIKHIL PRABHU - Role D — Models & Box (Weights, Serving, Scripts, GB10 First Hour)
 
 ### Purpose
 Own inference and the hardware. Get both models served locally on the GB10 behind OpenAI-compatible endpoints, own the first-hour bring-up, own every install script, and gate the team. **Most time-critical and highest-risk role — start at minute zero, staff it with the strongest infra person.**
