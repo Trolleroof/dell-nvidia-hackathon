@@ -16,10 +16,13 @@ ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 PANDA_XML = ASSETS_DIR / "menagerie" / "panda.xml"
 CELL_XML = ASSETS_DIR / "cell.xml"
 
-# Floor-mounted arm bases (world frame, metres)
+# Table-top rear mounts (table top z=0.42). Floor mounts at x=-0.22 caused links
+# to clip through the table edge when reaching the conveyor.
+TABLE_TOP_Z = 0.42
+ARM_MOUNT_QUAT = [0.7071, 0.0, 0.0, 0.7071]  # face +X over the work surface
 ARM_MOUNTS: dict[int, tuple[list[float], list[float]]] = {
-    0: ([-0.22, 0.35, 0.0], [0.7071, 0.0, 0.0, 0.7071]),
-    1: ([-0.22, -0.15, 0.0], [0.7071, 0.0, 0.0, 0.7071]),
+    0: ([0.08, 0.22, TABLE_TOP_Z], ARM_MOUNT_QUAT),
+    1: ([0.08, -0.22, TABLE_TOP_Z], ARM_MOUNT_QUAT),
 }
 
 PART_DEFAULTS = {
@@ -84,6 +87,20 @@ def _work_tray(
             conaffinity=0,
         )
     _planner_site(wb, name, center)
+
+
+def _arm_pedestal(wb, arm_id: int, mount_pos: list[float]) -> None:
+    """Visual base plate on the table — arm attaches at mount_pos."""
+    x, y, z = mount_pos
+    plate = wb.add_body(name=f"arm{arm_id}_pedestal", pos=[x, y, z - 0.015])
+    plate.add_geom(
+        name=f"arm{arm_id}_pedestal_plate",
+        type=mujoco.mjtGeom.mjGEOM_CYLINDER,
+        size=[0.055, 0.015],
+        rgba=[0.42, 0.42, 0.45, 1.0],
+        contype=0,
+        conaffinity=0,
+    )
 
 
 def build_cell_spec() -> mujoco.MjSpec:
@@ -200,6 +217,7 @@ def build_cell_spec() -> mujoco.MjSpec:
     add_conveyor_to_world(wb)
 
     for arm_id, (pos, quat) in ARM_MOUNTS.items():
+        _arm_pedestal(wb, arm_id, pos)
         panda = mujoco.MjSpec.from_file(str(PANDA_XML))
         for exc in list(panda.excludes):
             panda.delete(exc)
