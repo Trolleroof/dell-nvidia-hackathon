@@ -239,19 +239,39 @@ class MujocoCellEnv:
     def disable_live_smoothing(self) -> None:
         self._on_substep = None
 
-    def step(self, plan: CellPlan) -> dict[str, Any]:
+    def apply_plan(self, plan: CellPlan) -> None:
+        """Register a control step: apply commands and set arm goals (no physics).
+
+        Split out of ``step`` so a live driver can animate the resulting motion
+        one render frame at a time via :meth:`advance` instead of stepping the
+        whole interpolation in a single blocking call.
+        """
         self._events = []
         self._step += 1
-
         for cmd in plan.robots:
             if cmd.id < 0 or cmd.id >= self.num_robots:
                 self._events.append("invalid_robot_id")
                 continue
             self._apply_command(cmd)
 
-        self._simulate_motion_and_physics()
-        self._check_collisions()
+    def advance(self, n_substeps: int) -> bool:
+        """Run up to ``n_substeps`` of interpolation + physics.
 
+        Returns ``True`` once arm interpolation has settled (the visible motion
+        for the current plan is complete).
+        """
+        for _ in range(n_substeps):
+            if self._interp_remaining > 0:
+                self._interpolate_arms()
+                self._interp_remaining -= 1
+            mujoco.mj_step(self._model, self._data)
+            self._sync_gripped_parts()
+            self._advance_conveyor_belt()
+        return self._interp_remaining == 0
+
+    def finalize_step(self) -> dict[str, Any]:
+        """Collision check + task-done detection after a step's motion settles."""
+        self._check_collisions()
         parts = [
             {"id": pid, "at": at, "color": PartState.from_id(pid, [0, 0, 0], at).color}
             for pid, at in self._part_at.items()
@@ -260,6 +280,13 @@ class MujocoCellEnv:
             self._done = True
             if "task_complete" not in self._events:
                 self._events.append("task_complete")
+        return self.get_state()
+
+    def step(self, plan: CellPlan) -> dict[str, Any]:
+        self.apply_plan(plan)
+        total = max(INTERP_STEPS if self._interp_remaining else 0, PHYSICS_SUBSTEPS)
+        self.advance(total)
+        state = self.finalize_step()
 
         if os.environ.get("FACTORYMIND_SIM_AUTO_FRAME") == "1":
             try:
@@ -267,7 +294,7 @@ class MujocoCellEnv:
             except Exception:
                 pass
 
-        return self.get_state()
+        return state
 
     def _apply_command(self, cmd: RobotCommand) -> None:
         if cmd.action == "hold":

@@ -1,51 +1,63 @@
 import { useEffect, useRef, useState } from "react";
+import { ActionStream } from "./ActionStream";
 import { CellView } from "./CellView";
-import type { Mode, TelemetryRow } from "../types";
+import { LatencyRace } from "./LatencyRace";
+import { StatsPanel } from "./StatsPanel";
+import type { TelemetryRow, Aggregate } from "../types";
 
 interface ChatMessage {
   role: "operator" | "agent";
   text: string;
+  at?: string;
 }
 
 interface Props {
-  mode: Mode;
-  setMode: (mode: Mode) => void;
   playing: boolean;
   setPlaying: (playing: boolean) => void;
   speed: number;
   setSpeed: (speed: number) => void;
+  cloud: boolean;
+  setCloud: (cloud: boolean) => void;
   liveUrl: string;
   setLiveUrl: (url: string) => void;
   latest: { d?: TelemetryRow; a?: TelemetryRow };
+  stream: TelemetryRow[];
   step: number;
+  hint: string;
+  cloudRtt: number;
+  aggregates: { d: Aggregate | null; a: Aggregate | null };
+  decisions: number;
   resetKey: number;
   onReset: () => void;
-  onFetchIsolatedReplay: () => void;
 }
+
+const quickCommands = [
+  "Run five safe assembly steps",
+  "Pause on collision or parse failure",
+  "Explain the last action",
+];
 
 const LIVE_FEED_URL = "http://localhost:8766/telemetry/run.jsonl";
 const COMMAND_URL = "http://localhost:8765/command";
 
-function modeLabel(mode: Mode) {
-  if (mode === "mock") return "Mock";
-  if (mode === "replay") return "Replay";
-  return "Live";
-}
-
 export function AgentSimPage({
-  mode,
-  setMode,
   playing,
   setPlaying,
   speed,
   setSpeed,
+  cloud,
+  setCloud,
   liveUrl,
   setLiveUrl,
   latest,
+  stream,
   step,
+  hint,
+  cloudRtt,
+  aggregates,
+  decisions,
   resetKey,
   onReset,
-  onFetchIsolatedReplay,
 }: Props) {
   const [draft, setDraft] = useState("");
   const autoStepBusy = useRef(false);
@@ -56,7 +68,7 @@ export function AgentSimPage({
   }, [liveUrl, setLiveUrl]);
 
   useEffect(() => {
-    if (!playing || mode !== "live") return;
+    if (!playing) return;
     const id = setInterval(async () => {
       if (autoStepBusy.current) return;
       autoStepBusy.current = true;
@@ -73,18 +85,17 @@ export function AgentSimPage({
       }
     }, 600);
     return () => clearInterval(id);
-  }, [playing, mode]);
+  }, [playing]);
 
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
     setMessages((prev) => [...prev, { role: "operator", text: trimmed }]);
     setDraft("");
-
-    if (mode !== "live") setMode("live");
     if (!playing) setPlaying(true);
 
     try {
+      const at = step > 0 ? `step ${step}` : "live";
       const res = await fetch(COMMAND_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -92,18 +103,36 @@ export function AgentSimPage({
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as {
-        steps_run: number;
-        done: boolean;
-        executed: { step: number; action: string; events: string[] }[];
+        streaming?: boolean;
+        queued_steps?: number;
+        steps_run?: number;
+        done?: boolean;
+        executed?: { step: number; action: string; events: string[] }[];
       };
-      const last = data.executed[data.executed.length - 1];
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "agent",
-          text: `Ran ${data.steps_run} step${data.steps_run === 1 ? "" : "s"}${last ? ` — ${last.action}` : ""}${data.done ? " · done" : ""}.`,
-        },
-      ]);
+      if (data.streaming) {
+        const n = data.queued_steps ?? 0;
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "agent",
+            text: `Queued ${n} sim step${n === 1 ? "" : "s"} - driving the cell oracle. Watch the live stream.`,
+            at,
+          },
+        ]);
+      } else {
+        const executed = data.executed ?? [];
+        const last = executed[executed.length - 1];
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "agent",
+            text: `Ran ${data.steps_run ?? 0} sim step${data.steps_run === 1 ? "" : "s"} on the cell${
+              last ? ` - last: ${last.action}` : ""
+            }${data.done ? " - task complete" : ""}. Watch the live feed.`,
+            at: last ? `step ${last.step}` : at,
+          },
+        ]);
+      }
     } catch (e) {
       setMessages((prev) => [
         ...prev,
@@ -123,23 +152,15 @@ export function AgentSimPage({
       <section className="agent-grid">
         <div className="agent-sim-stack">
           <div className="agent-control-strip">
-            <div className="agent-mode-tabs">
-              {(["mock", "replay", "live"] as Mode[]).map((m) => (
-                <button key={m} className={mode === m ? "is-active" : ""} onClick={() => setMode(m)}>
-                  {modeLabel(m)}
-                </button>
-              ))}
+            <div className="agent-status-inline">
+              <span className={`agent-status-dot${playing ? "" : " is-idle"}`} />
+              <strong>{playing ? "Running" : "Paused"}</strong>
+              <span>Live feed - {health}</span>
             </div>
             <button className="agent-primary" onClick={() => setPlaying(!playing)}>
               {playing ? "Pause" : "Run"}
             </button>
             <button className="agent-secondary" onClick={onReset}>Reset</button>
-            <button className="agent-secondary" onClick={onFetchIsolatedReplay}>Replay</button>
-            <div className="agent-status-inline">
-              <span className="agent-status-dot" />
-              <strong>{playing ? "Running" : "Paused"}</strong>
-              <span>{modeLabel(mode)} · {health}</span>
-            </div>
           </div>
 
           <div className="agent-speed-row">
@@ -155,6 +176,17 @@ export function AgentSimPage({
               />
               <span>{speed.toFixed(2).replace(/0$/, "")}x</span>
             </label>
+            <label className="inline-flex items-center gap-2 border border-border px-3 py-2 text-foreground">
+              <input type="checkbox" checked={cloud} onChange={(event) => setCloud(event.target.checked)} />
+              Cloud comparison
+            </label>
+            <input
+              value={liveUrl}
+              onChange={(event) => setLiveUrl(event.target.value)}
+              className="min-w-[280px] flex-1 border border-border bg-transparent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-foreground"
+              spellCheck={false}
+              aria-label="Live telemetry URL"
+            />
           </div>
 
           <div className="agent-sim-frame">
@@ -162,8 +194,8 @@ export function AgentSimPage({
               latest={latestRow}
               step={step}
               resetKey={resetKey}
-              liveMujocoFrame={mode === "live"}
-              animatedFallback={mode === "mock"}
+              liveMujocoFrame
+              animatedFallback
             />
           </div>
         </div>
@@ -171,14 +203,28 @@ export function AgentSimPage({
         <aside className="agent-chat-card">
           <div className="agent-chat-header">
             <strong>Chat</strong>
+            <span className="agent-chat-sub">{hint}</span>
           </div>
 
           <div className="agent-thread">
             {messages.map((message, index) => (
               <div key={`${message.role}-${index}`} className={`agent-message ${message.role}`}>
-                <span>{message.role === "operator" ? "You" : "Agent"}</span>
+                <span>{message.role === "operator" ? "You" : "Agent"}{message.at ? ` - ${message.at}` : ""}</span>
                 <p>{message.text}</p>
               </div>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {quickCommands.map((command) => (
+              <button
+                key={command}
+                type="button"
+                className="agent-secondary px-3 py-2 text-[10px]"
+                onClick={() => send(command)}
+              >
+                {command}
+              </button>
             ))}
           </div>
 
@@ -198,6 +244,21 @@ export function AgentSimPage({
             <button type="submit">Send</button>
           </form>
         </aside>
+      </section>
+
+      <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_380px]">
+        <div className="flex flex-col gap-4">
+          <LatencyRace d={latest.d} a={latest.a} />
+          <ActionStream rows={stream} />
+        </div>
+        <StatsPanel
+          d={aggregates.d}
+          a={aggregates.a}
+          cloud={cloud}
+          cloudRtt={cloudRtt}
+          step={step}
+          decisions={decisions}
+        />
       </section>
     </main>
   );

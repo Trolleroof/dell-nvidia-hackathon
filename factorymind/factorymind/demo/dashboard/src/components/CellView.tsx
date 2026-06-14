@@ -73,10 +73,14 @@ export function CellView({
 
   const effectiveStep = latest ? step : mockTick;
   const replayStep = String(effectiveStep % 13).padStart(4, "0");
-  const framePath = liveMujocoFrame
-    ? "/sim/latest.png"
-    : latest?.frame_url ?? (preferMujocoFrame ? `/sim/replay/step_${replayStep}.png` : undefined);
-  const frameSrc = framePath ? `${frameBase}${framePath}?step=${effectiveStep}&refresh=${frameRefresh}` : undefined;
+  // Live mode consumes the server's continuous 60fps MJPEG stream (one persistent
+  // <img> connection) instead of re-fetching latest.png — `streamNonce` is only
+  // bumped to force a reconnect after an error.
+  const [streamNonce, setStreamNonce] = useState(0);
+  const liveStreamSrc = `${SIM_API_BASE}/sim/stream.mjpg${streamNonce ? `?r=${streamNonce}` : ""}`;
+  const pollPath = latest?.frame_url ?? (preferMujocoFrame ? `/sim/replay/step_${replayStep}.png` : undefined);
+  const pollSrc = pollPath ? `${frameBase}${pollPath}?step=${effectiveStep}&refresh=${frameRefresh}` : undefined;
+  const frameSrc = liveMujocoFrame ? liveStreamSrc : pollSrc;
   const [failedFrameSrc, setFailedFrameSrc] = useState<string | null>(null);
   const showFrame = Boolean(frameSrc && failedFrameSrc !== frameSrc);
 
@@ -90,12 +94,16 @@ export function CellView({
     ]);
   }, [resetKey]);
 
-  // Fast frame refresh: 100ms for smooth live view
+  // Live view is a continuous MJPEG stream — no polling. If it errors (server
+  // not up yet), retry the connection every few seconds.
   useEffect(() => {
-    if (!liveMujocoFrame) return;
-    const id = window.setInterval(() => setFrameRefresh((n) => n + 1), 100);
+    if (!liveMujocoFrame || failedFrameSrc === null) return;
+    const id = window.setInterval(() => {
+      setFailedFrameSrc(null);
+      setStreamNonce((n) => n + 1);
+    }, 3000);
     return () => window.clearInterval(id);
-  }, [liveMujocoFrame]);
+  }, [liveMujocoFrame, failedFrameSrc]);
 
   useEffect(() => {
     if (!animatedFallback || latest) return;

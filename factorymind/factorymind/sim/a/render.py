@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+import os
+
+# Default to the EGL (GPU) GL backend before MuJoCo creates any render context.
+# The fallback backend on this box does a CPU pixel readback (~42ms/frame, ~22fps);
+# EGL reads back on-GPU at ~3ms/frame, which is what makes the 60fps live stream
+# possible. Overridable: set MUJOCO_GL=glfw/osmesa if EGL is unavailable.
+os.environ.setdefault("MUJOCO_GL", "egl")
+
 from pathlib import Path
 
 import mujoco
@@ -11,11 +19,14 @@ DASHBOARD_WIDTH = 1280
 DASHBOARD_HEIGHT = 720
 DASHBOARD_CAMERA = "dashboard"
 
-# Framed overview of the full cell (free camera — XML fixed cam quat was misaligned)
-DASHBOARD_LOOKAT = (0.45, 0.0, 0.45)
-DASHBOARD_DISTANCE = 1.35
-DASHBOARD_ELEVATION = -28.0
-DASHBOARD_AZIMUTH = 132.0
+# Framed overview of the full cell (free camera — XML fixed cam quat was misaligned).
+# 3/4 side view: the `backdrop` wall sits between the arms (x≈-0.22) and the table
+# (x≈+0.22), so a front view occludes the arms. This azimuth puts both Franka arms
+# and the table+parts in frame with the backdrop edge-on. Tuned 2026-06-14.
+DASHBOARD_LOOKAT = (0.18, 0.05, 0.46)
+DASHBOARD_DISTANCE = 2.5
+DASHBOARD_ELEVATION = -23.0
+DASHBOARD_AZIMUTH = 283.0
 
 # Legacy default (kept for callers that omit size)
 DEFAULT_WIDTH = DASHBOARD_WIDTH
@@ -62,6 +73,17 @@ class CellRenderer:
         else:
             self._renderer.update_scene(data)
         return self._renderer.render()
+
+    def render_jpeg(self, data: mujoco.MjData, quality: int = 80) -> bytes:
+        """Render the current state and return JPEG-encoded bytes (for streaming)."""
+        from io import BytesIO
+
+        from PIL import Image
+
+        rgb = self.render_rgb(data)
+        buf = BytesIO()
+        Image.fromarray(rgb).save(buf, format="JPEG", quality=quality)
+        return buf.getvalue()
 
     def save_png(self, data: mujoco.MjData, path: Path) -> Path:
         """Render current state and write a PNG file."""

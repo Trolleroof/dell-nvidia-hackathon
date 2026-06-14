@@ -49,6 +49,34 @@ _current_task: str = "Move all parts from bin_a to station_1."
 # the merge point: NemoClaw's tool calls become the dashboard's live feed.
 _last_step_ts: float | None = None
 
+# Live driver — owns the MuJoCo env on a background thread and streams a smooth
+# 60fps MJPEG feed (see live_driver.py). Lazily created for the mujoco backend.
+_driver: Any = None
+
+
+def _driver_on_step_complete(state: dict[str, Any], plan: CellPlan) -> None:
+    """Per-step hook from the driver thread: emit telemetry + refresh latest.png."""
+    _emit_live_telemetry(state, plan)
+    try:
+        get_cell_env().save_frame()
+    except Exception:
+        pass
+
+
+def get_driver():
+    """Return the live driver, starting it on first use. None on mock backend."""
+    global _driver
+    if _driver is not None:
+        return _driver
+    env = get_cell_env()
+    if not all(hasattr(env, attr) for attr in ("apply_plan", "advance", "finalize_step", "model", "data")):
+        return None  # mock backend — fall back to PNG-poll path
+    from factorymind.sim.a.live_driver import LiveSimDriver
+
+    _driver = LiveSimDriver(get_cell_env, on_step_complete=_driver_on_step_complete)
+    _driver.start()
+    return _driver
+
 
 def _emit_live_telemetry(state: dict[str, Any], plan: CellPlan) -> None:
     """Append one C5 row to telemetry/run.jsonl for a NemoClaw-driven sim step.
@@ -91,6 +119,18 @@ def _save_live_frame(label: str = "") -> None:
         pass
 
 
+def _reset_live_episode(env: Any) -> None:
+    """Start a fresh episode: reset env, truncate telemetry, republish frame 0."""
+    global _last_step_ts
+    env.reset(0)
+    try:
+        default_telemetry_path().write_text("")
+    except Exception:
+        pass
+    _last_step_ts = None
+    _save_live_frame("command-reset")
+
+
 # ── UI Prompt tools ────────────────────────────────────────────────────────────
 
 @mcp.tool()
@@ -124,9 +164,18 @@ def reset_cell(seed: int = 0, scenario: Scenario = "default") -> dict[str, Any]:
     """
     global _current_task, _last_step_ts
     cfg = replace(get_config(), scenario=scenario, default_seed=seed)
-    cell = reset_cell_env(cfg)
+    driver = get_driver()
+    # Swap the env singleton under the driver lock so the render thread never
+    # touches a half-replaced env; the driver rebuilds its renderer next frame.
+    if driver is not None:
+        with driver.lock:
+            cell = reset_cell_env(cfg)
+            result = cell.reset(seed)
+            driver.reset_state()
+    else:
+        cell = reset_cell_env(cfg)
+        result = cell.reset(seed)
     _current_task = TASK_BY_SCENARIO.get(scenario, _current_task)
-    result = cell.reset(seed)
     # Start a fresh live feed: truncate telemetry (keep the file so the dashboard
     # live poll gets 200/empty rather than 404), reset cadence clock, publish frame 0.
     try:
@@ -180,7 +229,13 @@ def step_cell(plan_json: str) -> dict[str, Any]:
     """
     raw = json.loads(plan_json)
     plan = CellPlan.model_validate(raw)
-    result = get_cell_env().step(plan)
+    driver = get_driver()
+    if driver is not None:
+        # Serialize against the driver's render/physics thread (sole env writer).
+        with driver.lock:
+            result = get_cell_env().step(plan)
+    else:
+        result = get_cell_env().step(plan)
 
     # Merge point: publish frame + telemetry so the Role C dashboard's live
     # feed (:8766) reflects this NemoClaw-driven step in real time.
@@ -290,53 +345,60 @@ async def queue_command(request):  # type: ignore[no-untyped-def]
     if instruction:
         _current_task = instruction
 
-    from factorymind.sim.a.oracle import oracle_plan
-
     env = get_cell_env()
-    executed: list[dict[str, Any]] = []
-    state = env.get_state()
+    driver = get_driver()
 
     # A new operator command should always produce a visible run. If the previous
     # episode already finished, start a fresh one so steps > 0.
     did_reset = False
-    if state.get("done"):
-        env.reset(0)
-        try:
-            default_telemetry_path().write_text("")
-        except Exception:
-            pass
-        _last_step_ts = None
-        _save_live_frame("command-reset")
-        state = env.get_state()
+    if env.get_state().get("done"):
         did_reset = True
 
-    # Operator-triggered run: animate the in-between motion to latest.png so the
-    # live dashboard shows smooth arms. Scoped to this loop so the latency-critical
-    # NemoClaw step_cell path keeps one-frame-per-step (real wall-clock cadence).
-    smoothing = hasattr(env, "enable_live_smoothing")
-    if smoothing:
-        env.enable_live_smoothing(frames_per_step=6)  # type: ignore[attr-defined]
+    if driver is not None:
+        # Async path: the driver animates the oracle plans smoothly at 60fps and
+        # emits telemetry per step. We return immediately; the dashboard watches
+        # the MJPEG stream + telemetry feed rather than this response.
+        if did_reset:
+            driver.request_reset(lambda: _reset_live_episode(env))
+        driver.run_oracle(steps)
+        return JSONResponse(
+            {
+                "ok": True,
+                "task": _current_task,
+                "queued_steps": steps,
+                "did_reset": did_reset,
+                "streaming": True,
+                "stream": "http://localhost:8765/sim/stream.mjpg",
+                "feed": "http://localhost:8766/telemetry/run.jsonl",
+            },
+            headers=_CORS_HEADERS,
+        )
 
-    try:
-        for _ in range(steps):
-            if state.get("done"):
-                break
-            plan = oracle_plan(state)
-            state = env.step(plan)
-            _save_live_frame("command")
-            _emit_live_telemetry(state, plan)
-            executed.append(
-                {
-                    "step": state.get("step"),
-                    "action": "; ".join(
-                        f"r{c.id} {c.action} {c.target}" for c in plan.robots
-                    ),
-                    "events": state.get("events", []),
-                }
-            )
-    finally:
-        if smoothing:
-            env.disable_live_smoothing()  # type: ignore[attr-defined]
+    # Fallback (mock backend): run the oracle synchronously, render PNGs.
+    from factorymind.sim.a.oracle import oracle_plan
+
+    executed: list[dict[str, Any]] = []
+    state = env.get_state()
+    if did_reset:
+        _reset_live_episode(env)
+        state = env.get_state()
+
+    for _ in range(steps):
+        if state.get("done"):
+            break
+        plan = oracle_plan(state)
+        state = env.step(plan)
+        _save_live_frame("command")
+        _emit_live_telemetry(state, plan)
+        executed.append(
+            {
+                "step": state.get("step"),
+                "action": "; ".join(
+                    f"r{c.id} {c.action} {c.target}" for c in plan.robots
+                ),
+                "events": state.get("events", []),
+            }
+        )
 
     return JSONResponse(
         {
@@ -364,6 +426,37 @@ async def sim_state_route(request):  # type: ignore[no-untyped-def]
     return JSONResponse(state, headers=_CORS_HEADERS)
 
 
+@mcp.custom_route("/sim/stream.mjpg", methods=["GET", "OPTIONS"])
+async def sim_stream_route(request):  # type: ignore[no-untyped-def]
+    """Smooth 60fps MJPEG stream of the live cell (multipart/x-mixed-replace)."""
+    from starlette.responses import JSONResponse, StreamingResponse
+
+    if request.method == "OPTIONS":
+        return JSONResponse({}, headers=_CORS_HEADERS)
+
+    driver = get_driver()
+    if driver is None:
+        return JSONResponse(
+            {"ok": False, "error": "stream unavailable on mock backend"},
+            status_code=503,
+            headers=_CORS_HEADERS,
+        )
+
+    boundary = "frame"
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Connection": "close",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(
+        driver.mjpeg_frames(boundary),
+        media_type=f"multipart/x-mixed-replace; boundary={boundary}",
+        headers=headers,
+    )
+
+
 @mcp.custom_route("/teleport_part", methods=["POST", "OPTIONS"])
 async def teleport_part_route(request):  # type: ignore[no-untyped-def]
     from starlette.responses import JSONResponse
@@ -389,7 +482,12 @@ async def teleport_part_route(request):  # type: ignore[no-untyped-def]
             headers=_CORS_HEADERS,
         )
 
-    result = env.teleport_part(part_id, target)  # type: ignore[attr-defined]
+    driver = get_driver()
+    if driver is not None:
+        with driver.lock:
+            result = env.teleport_part(part_id, target)  # type: ignore[attr-defined]
+    else:
+        result = env.teleport_part(part_id, target)  # type: ignore[attr-defined]
     if result.get("ok"):
         _save_live_frame("teleport")
     return JSONResponse(result, headers=_CORS_HEADERS)
@@ -409,6 +507,9 @@ def main() -> None:
 
     if args.http:
         mcp.settings.port = args.port
+        # Warm the live driver so the MJPEG stream is ready before the first
+        # dashboard connection (no-op on the mock backend).
+        get_driver()
         mcp.run(transport="streamable-http")
     else:
         mcp.run(transport="stdio")
