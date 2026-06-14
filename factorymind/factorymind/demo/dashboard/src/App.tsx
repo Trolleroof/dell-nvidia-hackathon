@@ -23,6 +23,7 @@ export default function App() {
         liveUrl={t.liveUrl}
         setLiveUrl={t.setLiveUrl}
         latest={t.latest}
+        stream={t.stream}
         step={t.step}
         resetKey={resetKey}
         onReset={onReset}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CellView } from "./CellView";
+import { MetricsPanel, ActivityLog } from "./Telemetry";
 import type { TelemetryRow } from "../types";
 
 interface ChatMessage {
@@ -15,6 +16,7 @@ interface Props {
   liveUrl: string;
   setLiveUrl: (url: string) => void;
   latest: { d?: TelemetryRow; a?: TelemetryRow };
+  stream: TelemetryRow[];
   step: number;
   resetKey: number;
   onReset: () => void;
@@ -22,6 +24,16 @@ interface Props {
 
 const LIVE_FEED_URL = "http://localhost:8766/telemetry/run.jsonl";
 const COMMAND_URL = "http://localhost:8765/command";
+const SCENARIO_URL = "http://localhost:8765/scenario";
+
+// Scenario presets the sim backend supports (id → label).
+const SCENARIOS: [string, string][] = [
+  ["default", "Default"],
+  ["sort_green", "Sort Green"],
+  ["misaligned", "Misaligned"],
+  ["conveyor_feed", "Conveyor"],
+  ["empty_bin", "Empty Bin"],
+];
 
 export function AgentSimPage({
   playing,
@@ -31,6 +43,7 @@ export function AgentSimPage({
   liveUrl,
   setLiveUrl,
   latest,
+  stream,
   step,
   resetKey,
   onReset,
@@ -38,6 +51,20 @@ export function AgentSimPage({
   const [draft, setDraft] = useState("");
   const autoStepBusy = useRef(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [scenario, setScenario] = useState("default");
+
+  const pickScenario = async (id: string) => {
+    setScenario(id);
+    try {
+      await fetch(SCENARIO_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scenario: id }),
+      });
+    } catch {
+      // sim server not running
+    }
+  };
 
   useEffect(() => {
     if (liveUrl !== LIVE_FEED_URL) setLiveUrl(LIVE_FEED_URL);
@@ -143,6 +170,27 @@ export function AgentSimPage({
             </label>
           </div>
 
+          {/* Scenario switcher — swap the cell's task / layout */}
+          <div className="mb-3.5 flex flex-wrap items-center gap-2">
+            <span className="mr-1 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Scenario
+            </span>
+            {SCENARIOS.map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => pickScenario(id)}
+                title={`Load the "${label}" cell task / layout`}
+                className={`border px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.1em] transition-colors duration-100 ${
+                  scenario === id
+                    ? "border-nvidia bg-nvidia text-background"
+                    : "border-border-light text-muted-foreground hover:border-foreground hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           <div className="agent-sim-frame">
             <CellView
               latest={latestRow}
@@ -150,6 +198,12 @@ export function AgentSimPage({
               resetKey={resetKey}
               liveMujocoFrame
             />
+          </div>
+
+          {/* Tier 1 + Tier 2 telemetry */}
+          <div className="mt-4 grid gap-4">
+            <MetricsPanel d={latest.d} a={latest.a} />
+            <ActivityLog stream={stream} />
           </div>
         </div>
 
