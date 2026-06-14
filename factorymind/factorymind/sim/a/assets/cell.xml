@@ -5,6 +5,7 @@
 
   <visual>
     <global offwidth="1280" offheight="720"/>
+    <headlight ambient="0.42 0.42 0.44" diffuse="0.55 0.55 0.58" specular="0.12 0.12 0.12"/>
   </visual>
 
   <default>
@@ -201,7 +202,7 @@
     <mesh name="arm1_link6_13" file="link6_13.obj"/>
     <mesh name="arm1_link6_14" file="link6_14.obj"/>
     <mesh name="arm1_link6_15" file="link6_15.obj"/>
-    <mesh name="arm1_link6_16" content_type="model/obj" file="link6_16.obj"/>
+    <mesh name="arm1_link6_16" file="link6_16.obj"/>
     <mesh name="arm1_link7_0" file="link7_0.obj"/>
     <mesh name="arm1_link7_1" file="link7_1.obj"/>
     <mesh name="arm1_link7_2" file="link7_2.obj"/>
@@ -220,34 +221,64 @@
   </asset>
 
   <worldbody>
-    <geom name="floor" size="2 2 0.05" type="plane" rgba="0.2 0.2 0.2 1"/>
-    <geom name="bin_a_geom" size="0.1 0.1 0.01" pos="0.25 0.15 0.42" type="box" contype="0" conaffinity="0" rgba="0.2 0.5 0.8 0.6"/>
-    <geom name="station_1_geom" size="0.1 0.1 0.01" pos="0.75 0.15 0.42" type="box" contype="0" conaffinity="0" rgba="0.8 0.5 0.2 0.6"/>
-    <geom name="bin_b_geom" size="0.1 0.1 0.01" pos="0.25 -0.15 0.42" type="box" contype="0" conaffinity="0" rgba="0.2 0.5 0.8 0.6"/>
-    <geom name="station_2_geom" size="0.1 0.1 0.01" pos="0.75 -0.15 0.42" type="box" contype="0" conaffinity="0" rgba="0.8 0.5 0.2 0.6"/>
-    <site name="bin_a" pos="0.25 0.15 0.44" size="0.08" rgba="0.2 0.5 0.8 0.3"/>
-    <site name="station_1" pos="0.75 0.15 0.44" size="0.08" rgba="0.8 0.5 0.2 0.3"/>
-    <site name="bin_b" pos="0.25 -0.15 0.44" size="0.08" rgba="0.2 0.5 0.8 0.3"/>
-    <site name="station_2" pos="0.75 -0.15 0.44" size="0.08" rgba="0.8 0.5 0.2 0.3"/>
+    <geom name="floor" size="1.2 1.2 0.05" type="plane" rgba="0.32 0.33 0.36 1"/>
+    <geom name="backdrop" size="0.02 0.82 0.38" pos="-0.08 0.1 0.58" type="box" contype="0" conaffinity="0" rgba="0.26 0.28 0.32 1"/>
+    <geom name="bin_a_pad" size="0.085 0.085 0.006" pos="0.25 0.15 0.422" type="box" contype="0" conaffinity="0" rgba="0.18 0.42 0.72 0.95"/>
+    <geom name="bin_a_rim_north" size="0.085 0.006 0.012" pos="0.25 0.235 0.434" type="box" contype="0" conaffinity="0" rgba="0.12 0.28 0.5 1"/>
+    <geom name="bin_a_rim_south" size="0.085 0.006 0.012" pos="0.25 0.065 0.434" type="box" contype="0" conaffinity="0" rgba="0.12 0.28 0.5 1"/>
+    <geom name="bin_a_rim_east" size="0.006 0.085 0.012" pos="0.335 0.15 0.434" type="box" contype="0" conaffinity="0" rgba="0.12 0.28 0.5 1"/>
+    <geom name="bin_a_rim_west" size="0.006 0.085 0.012" pos="0.165 0.15 0.434" type="box" contype="0" conaffinity="0" rgba="0.12 0.28 0.5 1"/>
+    <geom name="station_1_pad" size="0.085 0.085 0.006" pos="0.75 0.15 0.422" type="box" contype="0" conaffinity="0" rgba="0.82 0.55 0.18 0.95"/>
+    <geom name="station_1_rim_north" size="0.085 0.006 0.012" pos="0.75 0.235 0.434" type="box" contype="0" conaffinity="0" rgba="0.58 0.38 0.1 1"/>
+    <geom name="station_1_rim_south" size="0.085 0.006 0.012" pos="0.75 0.065 0.434" type="box" contype="0" conaffinity="0" rgba="0.58 0.38 0.1 1"/>
+    <geom name="station_1_rim_east" size="0.006 0.085 0.012" pos="0.835 0.15 0.434" type="box" contype="0" conaffinity="0" rgba="0.58 0.38 0.1 1"/>
+    <geom name="station_1_rim_west" size="0.006 0.085 0.012" pos="0.665 0.15 0.434" type="box" contype="0" conaffinity="0" rgba="0.58 0.38 0.1 1"/>
+    <geom name="bin_b_pad" size="0.085 0.085 0.006" pos="0.25 -0.15 0.422" type="box" contype="0" conaffinity="0" rgba="0.18 0.42 0.72 0.95"/>
+    <geom name="bin_b_rim_north" size="0.085 0.006 0.012" pos="0.25 -0.065 0.434" type="box" contype="0" conaffinity="0" rgba="0.12 0.28 0.5 1"/>
+    <geom name="bin_b_rim_south" size="0.085 0.006 0.012" pos="0.25 -0.235 0.434" type="box" contype="0" conaffinity="0" rgba="0.12 0.28 0.5 1"/>
+    <geom name="bin_b_rim_east" size="0.006 0.085 0.012" pos="0.335 -0.15 0.434" type="box" contype="0" conaffinity="0" rgba="0.12 0.28 0.5 1"/>
+    <geom name="bin_b_rim_west" size="0.006 0.085 0.012" pos="0.165 -0.15 0.434" type="box" contype="0" conaffinity="0" rgba="0.12 0.28 0.5 1"/>
+    <geom name="station_2_pad" size="0.085 0.085 0.006" pos="0.75 -0.15 0.422" type="box" contype="0" conaffinity="0" rgba="0.82 0.55 0.18 0.95"/>
+    <geom name="station_2_rim_north" size="0.085 0.006 0.012" pos="0.75 -0.065 0.434" type="box" contype="0" conaffinity="0" rgba="0.58 0.38 0.1 1"/>
+    <geom name="station_2_rim_south" size="0.085 0.006 0.012" pos="0.75 -0.235 0.434" type="box" contype="0" conaffinity="0" rgba="0.58 0.38 0.1 1"/>
+    <geom name="station_2_rim_east" size="0.006 0.085 0.012" pos="0.835 -0.15 0.434" type="box" contype="0" conaffinity="0" rgba="0.58 0.38 0.1 1"/>
+    <geom name="station_2_rim_west" size="0.006 0.085 0.012" pos="0.665 -0.15 0.434" type="box" contype="0" conaffinity="0" rgba="0.58 0.38 0.1 1"/>
+    <site name="bin_a" pos="0.25 0.15 0.44" size="0.004" group="3" rgba="0 0 0 0"/>
+    <site name="station_1" pos="0.75 0.15 0.44" size="0.004" group="3" rgba="0 0 0 0"/>
+    <site name="bin_b" pos="0.25 -0.15 0.44" size="0.004" group="3" rgba="0 0 0 0"/>
+    <site name="station_2" pos="0.75 -0.15 0.44" size="0.004" group="3" rgba="0 0 0 0"/>
+    <site name="conveyor_infeed" pos="0.17 -0.3 0.455" size="0.004" group="3" rgba="0 0 0 0"/>
+    <site name="conveyor_pick" pos="0.42 -0.3 0.455" size="0.004" group="3" rgba="0 0 0 0"/>
+    <site name="conveyor_end" pos="0.83 -0.3 0.455" size="0.004" group="3" rgba="0 0 0 0"/>
     <camera name="dashboard" pos="0.55 0 1.05" quat="0.961394 0.275174 0 0" fovy="48"/>
-    <light pos="0 0 2" dir="0 0 -1" diffuse="0.8 0.8 0.8"/>
+    <light pos="0.9 0.35 1.6" dir="-0.477809 -0.130312 -0.868744" diffuse="0.85 0.82 0.78" specular="0.25 0.25 0.25"/>
+    <light pos="-0.15 -0.55 1.3" dir="0.140181 0.327089 -0.934539" diffuse="0.35 0.38 0.45" specular="0.05 0.05 0.05"/>
     <body name="table" pos="0.5 0 0.4">
-      <geom name="table_top" size="0.45 0.35 0.02" type="box" rgba="0.55 0.45 0.35 1"/>
+      <geom name="table_top" size="0.45 0.35 0.02" type="box" rgba="0.5 0.4 0.3 1"/>
+      <geom name="table_skirt" size="0.44 0.34 0.05" pos="0 0 -0.055" type="box" contype="0" conaffinity="0" rgba="0.38 0.32 0.26 1"/>
     </body>
     <body name="part_1" pos="0.22 0.12 0.46">
       <joint name="part_1_free" type="free"/>
-      <geom name="part_1_geom" size="0.015 0.015 0.015" type="box" mass="0.05" rgba="0.95 0.85 0.15 1"/>
-      <site name="part_1_tip" pos="0 0 0" size="0.012"/>
+      <geom name="part_1_geom" size="0.022 0.022 0.018" type="box" mass="0.06" rgba="0.95 0.85 0.15 1"/>
+      <site name="part_1_tip" pos="0 0 0" size="0.004" group="3" rgba="0 0 0 0"/>
     </body>
     <body name="part_2" pos="0.25 0.15 0.46">
       <joint name="part_2_free" type="free"/>
-      <geom name="part_2_geom" size="0.015 0.015 0.015" type="box" mass="0.05" rgba="0.25 0.45 0.92 1"/>
-      <site name="part_2_tip" pos="0 0 0" size="0.012"/>
+      <geom name="part_2_geom" size="0.022 0.022 0.018" type="box" mass="0.06" rgba="0.25 0.45 0.92 1"/>
+      <site name="part_2_tip" pos="0 0 0" size="0.004" group="3" rgba="0 0 0 0"/>
     </body>
     <body name="part_3" pos="0.28 0.18 0.46">
       <joint name="part_3_free" type="free"/>
-      <geom name="part_3_geom" size="0.015 0.015 0.015" type="box" mass="0.05" rgba="0.22 0.72 0.38 1"/>
-      <site name="part_3_tip" pos="0 0 0" size="0.012"/>
+      <geom name="part_3_geom" size="0.022 0.022 0.018" type="box" mass="0.06" rgba="0.22 0.72 0.38 1"/>
+      <site name="part_3_tip" pos="0 0 0" size="0.004" group="3" rgba="0 0 0 0"/>
+    </body>
+    <body name="conveyor_frame" pos="0.5 -0.3 0.42">
+      <geom name="conveyor_belt_surface" size="0.38 0.06 0.008" pos="0 0 0.005" type="box" friction="1.2" rgba="0.12 0.12 0.14 1"/>
+      <geom name="conveyor_rail_left" size="0.38 0.008 0.018" pos="0 0.072 0.02" type="box" contype="0" conaffinity="0" rgba="0.35 0.35 0.38 1"/>
+      <geom name="conveyor_rail_right" size="0.38 0.008 0.018" pos="0 -0.072 0.02" type="box" contype="0" conaffinity="0" rgba="0.35 0.35 0.38 1"/>
+      <geom name="conveyor_roller_in" size="0.025 0.006" pos="-0.36 0 0.012" type="cylinder" contype="0" conaffinity="0" rgba="0.5 0.5 0.55 1"/>
+      <geom name="conveyor_roller_out" size="0.025 0.006" pos="0.36 0 0.012" type="cylinder" contype="0" conaffinity="0" rgba="0.5 0.5 0.55 1"/>
+      <geom name="conveyor_pick_tape" size="0.05 0.045 0.001" pos="-0.08 0 0.014" type="box" contype="0" conaffinity="0" rgba="0.92 0.78 0.18 0.75"/>
     </body>
     <light name="arm0_top" pos="-0.22 0.35 2" dir="0 0 -1" mode="trackcom"/>
     <body name="arm0_link0" childclass="arm0_panda" pos="-0.22 0.35 0" quat="0.707107 0 0 0.707107">
@@ -340,7 +371,7 @@
                       <geom class="arm0_visual" material="arm0_white" mesh="arm0_hand_3"/>
                       <geom class="arm0_visual" material="arm0_off_white" mesh="arm0_hand_4"/>
                       <geom class="arm0_collision" mesh="arm0_hand_c"/>
-                      <site name="arm0_ee" pos="0 0 0.103" size="0.01"/>
+                      <site name="arm0_ee" pos="0 0 0.103" size="0.008"/>
                       <body name="arm0_left_finger" pos="0 0 0.0584">
                         <inertial pos="0 0 0" mass="0.015" diaginertia="2.375e-06 2.375e-06 7.5e-07"/>
                         <joint name="arm0_finger_joint1" class="arm0_finger" pos="0 0 0" axis="0 1 0"/>
@@ -465,7 +496,7 @@
                       <geom class="arm1_visual" material="arm1_white" mesh="arm1_hand_3"/>
                       <geom class="arm1_visual" material="arm1_off_white" mesh="arm1_hand_4"/>
                       <geom class="arm1_collision" mesh="arm1_hand_c"/>
-                      <site name="arm1_ee" pos="0 0 0.103" size="0.01"/>
+                      <site name="arm1_ee" pos="0 0 0.103" size="0.008"/>
                       <body name="arm1_left_finger" pos="0 0 0.0584">
                         <inertial pos="0 0 0" mass="0.015" diaginertia="2.375e-06 2.375e-06 7.5e-07"/>
                         <joint name="arm1_finger_joint1" class="arm1_finger" pos="0 0 0" axis="0 1 0"/>

@@ -5,12 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from factorymind.sim.a.conveyor import BELT_BLOCK_CATALOG
 from factorymind.sim.a.part_catalog import PART_CATALOG, TASK_BY_SCENARIO
 
 GripperState = Literal["open", "closed"]
 StationStatus = Literal["empty", "occupied", "done"]
 PartLocation = str  # bin_a | station_1 | gripper_0 | ...
-Scenario = Literal["default", "sort_green", "misaligned", "empty_bin"]
+Scenario = Literal["default", "sort_green", "misaligned", "empty_bin", "conveyor_feed"]
 
 
 @dataclass
@@ -32,7 +33,7 @@ class PartState:
 
     @classmethod
     def from_id(cls, part_id: str, pos: list[float], at: PartLocation) -> PartState:
-        meta = PART_CATALOG.get(part_id, {})
+        meta = PART_CATALOG.get(part_id) or BELT_BLOCK_CATALOG.get(part_id, {})
         return cls(
             id=part_id,
             pos=pos,

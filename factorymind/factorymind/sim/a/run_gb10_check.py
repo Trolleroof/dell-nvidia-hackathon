@@ -38,7 +38,8 @@ def _try_render(backend: str) -> tuple[bool, str]:
 
 def _scenario_oracle(scenario: str) -> dict:
     cfg = SimConfig(backend="mujoco", scenario=scenario, default_seed=0)  # type: ignore[arg-type]
-    final = run_oracle_episode(create_cell_env(cfg), max_steps=60)
+    max_steps = 160 if scenario == "conveyor_feed" else 60
+    final = run_oracle_episode(create_cell_env(cfg), max_steps=max_steps)
     return {
         "scenario": scenario,
         "done": final["done"],
@@ -81,7 +82,7 @@ def main() -> None:
             manifest["ok"] = False
             raise SystemExit(f"{key} failed")
 
-    for scenario in ("sort_green", "misaligned"):
+    for scenario in ("sort_green", "misaligned", "empty_bin", "conveyor_feed"):
         print(f"\n=== scenario {scenario} ===")
         result = _scenario_oracle(scenario)
         manifest["checks"][f"scenario_{scenario}"] = result

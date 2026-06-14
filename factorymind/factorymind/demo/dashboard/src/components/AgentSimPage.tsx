@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CellView } from "./CellView";
 import type { Mode, TelemetryRow } from "../types";
 
@@ -24,6 +24,7 @@ interface Props {
 }
 
 const LIVE_FEED_URL = "http://localhost:8766/telemetry/run.jsonl";
+const COMMAND_URL = "http://localhost:8765/command";
 
 function modeLabel(mode: Mode) {
   if (mode === "mock") return "Mock";
@@ -47,21 +48,71 @@ export function AgentSimPage({
   onFetchIsolatedReplay,
 }: Props) {
   const [draft, setDraft] = useState("");
+  const autoStepBusy = useRef(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   useEffect(() => {
     if (liveUrl !== LIVE_FEED_URL) setLiveUrl(LIVE_FEED_URL);
   }, [liveUrl, setLiveUrl]);
 
-  const send = (text: string) => {
+  useEffect(() => {
+    if (!playing || mode !== "live") return;
+    const id = setInterval(async () => {
+      if (autoStepBusy.current) return;
+      autoStepBusy.current = true;
+      try {
+        await fetch(COMMAND_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ steps: 1 }),
+        });
+      } catch {
+        // sim not running
+      } finally {
+        autoStepBusy.current = false;
+      }
+    }, 600);
+    return () => clearInterval(id);
+  }, [playing, mode]);
+
+  const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    setMessages((prev) => [
-      ...prev,
-      { role: "operator", text: trimmed },
-      { role: "agent", text: "Queued." },
-    ]);
+    setMessages((prev) => [...prev, { role: "operator", text: trimmed }]);
     setDraft("");
+
+    if (mode !== "live") setMode("live");
+    if (!playing) setPlaying(true);
+
+    try {
+      const res = await fetch(COMMAND_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instruction: trimmed, steps: 6 }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        steps_run: number;
+        done: boolean;
+        executed: { step: number; action: string; events: string[] }[];
+      };
+      const last = data.executed[data.executed.length - 1];
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "agent",
+          text: `Ran ${data.steps_run} step${data.steps_run === 1 ? "" : "s"}${last ? ` — ${last.action}` : ""}${data.done ? " · done" : ""}.`,
+        },
+      ]);
+    } catch (e) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "agent",
+          text: `Sim unreachable (${(e as Error).message}). Start MCP sim server on :8765.`,
+        },
+      ]);
+    }
   };
 
   const latestRow = latest.d ?? latest.a;

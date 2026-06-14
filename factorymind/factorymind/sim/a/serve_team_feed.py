@@ -37,6 +37,14 @@ class FeedHandler(SimpleHTTPRequestHandler):
             return str((self.frames_root / rel).resolve())
         return str((self.telemetry_root / "run.jsonl").resolve())
 
+    def end_headers(self) -> None:
+        # Dashboard is a different origin (Vite dev server / static host), so the
+        # browser needs CORS to fetch telemetry JSONL. Frames load via <img>
+        # (not CORS-gated), but the live feed goes through fetch().
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def log_message(self, fmt: str, *args) -> None:
         print(f"[serve] {self.address_string()} {fmt % args}")
 

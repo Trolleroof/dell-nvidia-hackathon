@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
@@ -20,9 +21,16 @@ from dataclasses import replace
 from factorymind.sim.a.config import get_config
 from factorymind.sim.a.env_factory import get_cell_env, reset_cell_env
 from factorymind.sim.a.frame_export import latest_frame_path, read_latest_frame_meta
+from factorymind.sim.a.part_catalog import TASK_BY_SCENARIO
 from factorymind.sim.a.targets import TARGET_POSES
+from factorymind.sim.a.telemetry_bridge import (
+    DIFFUSION_PROFILE,
+    append_rows,
+    c5_row_for_step,
+    default_telemetry_path,
+)
 
-Scenario = Literal["default", "sort_green", "misaligned", "empty_bin"]
+Scenario = Literal["default", "sort_green", "misaligned", "empty_bin", "conveyor_feed"]
 
 mcp = FastMCP(
     "FactoryMind Sim",
@@ -35,6 +43,52 @@ mcp = FastMCP(
 
 # UI Prompt — task instruction set by the agent or user before an episode
 _current_task: str = "Move all parts from bin_a to station_1."
+
+# Live-feed bridge — when NemoClaw drives the sim through these tools, emit the
+# same C5 telemetry + frames that the Role C dashboard polls on :8766. This is
+# the merge point: NemoClaw's tool calls become the dashboard's live feed.
+_last_step_ts: float | None = None
+
+
+def _emit_live_telemetry(state: dict[str, Any], plan: CellPlan) -> None:
+    """Append one C5 row to telemetry/run.jsonl for a NemoClaw-driven sim step.
+
+    The headline `latency_ms` is the real wall-clock between successive tool
+    calls — i.e. NemoClaw's decision cadence (model think-time + sim step).
+    Falls back silently so a telemetry hiccup never blocks the control loop.
+    """
+    global _last_step_ts
+    try:
+        now = time.time()
+        measured_ms = int((now - _last_step_ts) * 1000) if _last_step_ts else None
+        _last_step_ts = now
+
+        step = state.get("step", 0)
+        row = c5_row_for_step(
+            profile=DIFFUSION_PROFILE,
+            step=step,
+            plan=plan,
+            events=state.get("events", []),
+            done=state.get("done", False),
+            ts=now,
+            frame_url="/sim/latest.png",
+        )
+        # Override the synthetic latency with the real measured cadence when known.
+        if measured_ms is not None:
+            row["latency_ms"] = measured_ms
+        append_rows(default_telemetry_path(), [row])
+    except Exception:
+        pass
+
+
+def _save_live_frame(label: str = "") -> None:
+    """Render the current sim to frames/latest.png for the dashboard poll."""
+    try:
+        env = get_cell_env()
+        if hasattr(env, "save_frame"):
+            env.save_frame()
+    except Exception:
+        pass
 
 
 # ── UI Prompt tools ────────────────────────────────────────────────────────────
@@ -61,14 +115,29 @@ def get_task() -> dict[str, str]:
 # ── Sim state tools ───────────────────────────────────────────────────────────
 
 @mcp.tool()
-def reset_cell(seed: int = 0) -> dict[str, Any]:
-    """Reset the cell to the initial pick-and-place scenario.
+def reset_cell(seed: int = 0, scenario: Scenario = "default") -> dict[str, Any]:
+    """Reset the cell. scenario: default | sort_green | misaligned | empty_bin | conveyor_feed.
 
     Args:
         seed: Random seed for deterministic physics.
+        scenario: Initial layout / task preset.
     """
-    cell = get_cell_env()
-    return cell.reset(seed)
+    global _current_task, _last_step_ts
+    cfg = replace(get_config(), scenario=scenario, default_seed=seed)
+    cell = reset_cell_env(cfg)
+    _current_task = TASK_BY_SCENARIO.get(scenario, _current_task)
+    result = cell.reset(seed)
+    # Start a fresh live feed: truncate telemetry (keep the file so the dashboard
+    # live poll gets 200/empty rather than 404), reset cadence clock, publish frame 0.
+    try:
+        path = default_telemetry_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("")
+    except Exception:
+        pass
+    _last_step_ts = None
+    _save_live_frame("reset")
+    return result
 
 
 @mcp.tool()
@@ -113,6 +182,11 @@ def step_cell(plan_json: str) -> dict[str, Any]:
     plan = CellPlan.model_validate(raw)
     result = get_cell_env().step(plan)
 
+    # Merge point: publish frame + telemetry so the Role C dashboard's live
+    # feed (:8766) reflects this NemoClaw-driven step in real time.
+    _save_live_frame("step")
+    _emit_live_telemetry(result, plan)
+
     # Return with architecture sections, same as get_cell_state
     mujoco_state = {
         "robot_arm_states": result["robots"],
@@ -132,9 +206,9 @@ def step_cell(plan_json: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-def list_targets() -> list[str]:
+def list_targets() -> dict[str, list[str]]:
     """List valid named targets for move/grip/release commands."""
-    return get_cell_env().list_targets()
+    return {"targets": get_cell_env().list_targets()}
 
 
 # ── Resources (schema references) ─────────────────────────────────────────────
@@ -155,7 +229,7 @@ def state_schema() -> str:
                     "stations": [{"id": "station_1", "status": "empty|occupied|done"}],
                     "step": 42,
                     "done": False,
-                    "events": ["pick_success", "collision", "task_complete"],
+                    "events": ["pick_success", "collision", "task_complete", "scenario_misaligned", "scenario_conveyor_feed"],
                 },
             },
             "ui_prompt": {"task": "Move all parts from bin_a to station_1."},
@@ -180,6 +254,134 @@ def action_schema() -> str:
 def target_lookup() -> str:
     """Named target → pose lookup table."""
     return json.dumps(TARGET_POSES, indent=2)
+
+
+# ── Browser bridge — frontend "Queue command" → real sim action ────────────────
+# The Role C dashboard runs in a browser and cannot do the MCP session handshake
+# cleanly, so we expose a plain CORS-enabled REST endpoint in the SAME process
+# (which owns the sim env singleton). Posting an instruction sets the task and
+# drives the deterministic oracle policy — the plan's guaranteed safety net — so
+# the operator sees the cell move and the live feed update immediately. When
+# NemoClaw runs its own loop it drives the same env via the MCP tools above.
+
+_CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+}
+
+
+@mcp.custom_route("/command", methods=["POST", "OPTIONS"])
+async def queue_command(request):  # type: ignore[no-untyped-def]
+    from starlette.responses import JSONResponse
+
+    if request.method == "OPTIONS":
+        return JSONResponse({}, headers=_CORS_HEADERS)
+
+    global _current_task, _last_step_ts
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    instruction = str(body.get("instruction", "")).strip()
+    steps = int(body.get("steps", 5))
+    steps = max(1, min(steps, 50))
+
+    if instruction:
+        _current_task = instruction
+
+    from factorymind.sim.a.oracle import oracle_plan
+
+    env = get_cell_env()
+    executed: list[dict[str, Any]] = []
+    state = env.get_state()
+
+    # A new operator command should always produce a visible run. If the previous
+    # episode already finished, start a fresh one so steps > 0.
+    did_reset = False
+    if state.get("done"):
+        env.reset(0)
+        try:
+            default_telemetry_path().write_text("")
+        except Exception:
+            pass
+        _last_step_ts = None
+        _save_live_frame("command-reset")
+        state = env.get_state()
+        did_reset = True
+
+    for _ in range(steps):
+        if state.get("done"):
+            break
+        plan = oracle_plan(state)
+        state = env.step(plan)
+        _save_live_frame("command")
+        _emit_live_telemetry(state, plan)
+        executed.append(
+            {
+                "step": state.get("step"),
+                "action": "; ".join(
+                    f"r{c.id} {c.action} {c.target}" for c in plan.robots
+                ),
+                "events": state.get("events", []),
+            }
+        )
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "task": _current_task,
+            "steps_run": len(executed),
+            "did_reset": did_reset,
+            "done": state.get("done", False),
+            "executed": executed,
+            "feed": "http://localhost:8766/telemetry/run.jsonl",
+        },
+        headers=_CORS_HEADERS,
+    )
+
+
+@mcp.custom_route("/sim/state", methods=["GET", "OPTIONS"])
+async def sim_state_route(request):  # type: ignore[no-untyped-def]
+    from starlette.responses import JSONResponse
+
+    if request.method == "OPTIONS":
+        return JSONResponse({}, headers=_CORS_HEADERS)
+
+    env = get_cell_env()
+    state = env.get_state()
+    return JSONResponse(state, headers=_CORS_HEADERS)
+
+
+@mcp.custom_route("/teleport_part", methods=["POST", "OPTIONS"])
+async def teleport_part_route(request):  # type: ignore[no-untyped-def]
+    from starlette.responses import JSONResponse
+
+    if request.method == "OPTIONS":
+        return JSONResponse({}, headers=_CORS_HEADERS)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    part_id = str(body.get("part_id", "")).strip()
+    target = str(body.get("target", "")).strip()
+
+    if not part_id or not target:
+        return JSONResponse({"ok": False, "error": "part_id and target required"}, headers=_CORS_HEADERS)
+
+    env = get_cell_env()
+    if not hasattr(env, "teleport_part"):
+        return JSONResponse(
+            {"ok": False, "error": "teleport_part not supported on mock backend"},
+            headers=_CORS_HEADERS,
+        )
+
+    result = env.teleport_part(part_id, target)  # type: ignore[attr-defined]
+    if result.get("ok"):
+        _save_live_frame("teleport")
+    return JSONResponse(result, headers=_CORS_HEADERS)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

@@ -1,0 +1,24 @@
+# Allow the NemoClaw sandbox to reach the FactoryMind sim MCP server on the host.
+# Mirrors the local-inference preset but for the MCP tool endpoint (:8765).
+preset:
+  name: factorymind-sim-mcp
+  description: "FactoryMind sim MCP tool server (get_cell_state / step_cell) via host gateway"
+
+network_policies:
+  factorymind_sim_mcp:
+    name: factorymind_sim_mcp
+    endpoints:
+      - host: host.openshell.internal
+        port: 8765
+        protocol: rest
+        enforcement: enforce
+        allowed_ips:
+          # OpenShell's SSRF guard rejects private host-gateway IPs unless
+          # the policy explicitly allowlists the resolved address.
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+          - 192.168.0.0/16
+        rules:
+          - allow: { method: GET, path: "/**" }
+          - allow: { method: POST, path: "/**" }
+          - allow: { method: OPTIONS, path: "/**" }

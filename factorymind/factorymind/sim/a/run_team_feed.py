@@ -13,8 +13,8 @@ Usage:
     export FACTORYMIND_SIM_BACKEND=mujoco
     python -m factorymind.sim.a.run_team_feed
 
-    # green-box sorting demo (Phase 1 planner task):
-    python -m factorymind.sim.a.run_team_feed --scenario sort_green
+    # conveyor-fed pick-and-place demo:
+    python -m factorymind.sim.a.run_team_feed --scenario conveyor_feed
 
     # then serve for dashboard Live mode (second terminal):
     python -m factorymind.sim.a.serve_team_feed
@@ -68,6 +68,9 @@ def run_feed(
 ) -> dict:
     os.environ["FACTORYMIND_SIM_BACKEND"] = "mujoco"
     os.environ["FACTORYMIND_SIM_AUTO_FRAME"] = "1"
+
+    if max_steps == 50 and scenario == "conveyor_feed":
+        max_steps = 160
 
     cfg = SimConfig(backend="mujoco", scenario=scenario, default_seed=seed)  # type: ignore[arg-type]
     env = create_cell_env(cfg)
@@ -174,7 +177,7 @@ def main() -> None:
     parser.add_argument(
         "--scenario",
         default="default",
-        choices=["default", "sort_green", "misaligned", "empty_bin"],
+        choices=["default", "sort_green", "misaligned", "empty_bin", "conveyor_feed"],
     )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-steps", type=int, default=50)

@@ -215,7 +215,7 @@ export function useTelemetry() {
       }
     };
     poll();
-    const id = setInterval(poll, 700);
+    const id = setInterval(poll, 300);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, playing, liveUrl, ingest]);

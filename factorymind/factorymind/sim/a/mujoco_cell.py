@@ -11,6 +11,15 @@ import numpy as np
 
 from factorymind.agent.schemas import CellPlan, RobotCommand
 from factorymind.sim.a.build_cell import PART_DEFAULTS
+from factorymind.sim.a.conveyor import (
+    BELT_SPEED,
+    BELT_X_END,
+    BELT_X_START,
+    CONVEYOR_PART_STARTS,
+    CONVEYOR_PART_WRAP,
+    in_belt_zone,
+    part_at_pick_zone,
+)
 from factorymind.sim.a.pose_lookup import ARM_JOINT_NAMES, apply_arm_qpos, read_arm_qpos
 from factorymind.sim.a.frame_export import publish_latest_frame
 from factorymind.sim.a.render import CellRenderer, DASHBOARD_HEIGHT, DASHBOARD_WIDTH, default_frames_dir
@@ -18,7 +27,7 @@ from factorymind.sim.a.part_catalog import TASK_BY_SCENARIO, is_task_done
 from factorymind.sim.a.state import CellState, PartState, RobotState, StationState
 from factorymind.sim.a.targets import TARGET_POSES, TARGET_QPOS, TARGET_QPOS_ARM1
 
-Scenario = Literal["default", "sort_green", "misaligned", "empty_bin"]
+Scenario = Literal["default", "sort_green", "misaligned", "empty_bin", "conveyor_feed"]
 
 INTERP_STEPS = 80
 INTERP_ALPHA = 0.12
@@ -87,6 +96,11 @@ class MujocoCellEnv:
         if self.scenario == "empty_bin":
             self._part_at = {}
             self._events.append("scenario_empty_bin")
+            self._events.append("empty_bin_diagnosed")
+            self._done = True
+        elif self.scenario == "conveyor_feed":
+            self._part_at = {"part_1": "conveyor", "part_2": "conveyor", "part_3": "conveyor"}
+            self._events.append("scenario_conveyor_feed")
         else:
             self._part_at = {"part_1": "bin_a", "part_2": "bin_a", "part_3": "bin_a"}
             if self.scenario == "misaligned":
@@ -212,9 +226,18 @@ class MujocoCellEnv:
 
         if cmd.action == "grip":
             part_id = cmd.target if cmd.target.startswith("part_") else None
-            if part_id is None or self._part_at.get(part_id) not in ("bin_a", part_id):
+            allowed = ("bin_a", "conveyor", part_id) if part_id else ()
+            if part_id is None or self._part_at.get(part_id) not in allowed:
                 self._events.append("grip_miss")
                 return
+            if self._part_at.get(part_id) == "conveyor":
+                if self._robot_pose[cmd.id] != "conveyor_pick":
+                    self._events.append("grip_miss")
+                    return
+                pos = self._part_position(part_id)
+                if not part_at_pick_zone(pos[0]):
+                    self._events.append("grip_miss")
+                    return
             if self._gripper_closed[cmd.id]:
                 self._events.append("gripper_busy")
                 return
@@ -276,6 +299,37 @@ class MujocoCellEnv:
                 self._interp_remaining -= 1
             mujoco.mj_step(self._model, self._data)
             self._sync_gripped_parts()
+            self._advance_conveyor_belt()
+
+    def _advance_conveyor_on_body(self, body_id: str, wrap_offset: float, base_y: float, base_z: float) -> None:
+        bid = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_BODY, body_id)
+        if bid < 0:
+            return
+        pos = self._data.xpos[bid]
+        if not in_belt_zone(float(pos[0]), float(pos[1]), float(pos[2])):
+            return
+        jnt_adr = int(self._model.body_jntadr[bid])
+        if jnt_adr < 0:
+            return
+        dof_adr = int(self._model.jnt_dofadr[jnt_adr])
+        self._data.qvel[dof_adr] = BELT_SPEED
+        self._data.qvel[dof_adr + 1] = 0.0
+        self._data.qvel[dof_adr + 2] = 0.0
+        if float(pos[0]) > BELT_X_END - 0.04:
+            wrap_x = BELT_X_START + 0.05 + wrap_offset
+            self._set_body_pos(body_id, [wrap_x, base_y, base_z])
+            self._data.qvel[dof_adr] = BELT_SPEED
+
+    def _advance_conveyor_belt(self) -> None:
+        for part_id, base in CONVEYOR_PART_STARTS.items():
+            if self._part_at.get(part_id) != "conveyor":
+                continue
+            self._advance_conveyor_on_body(
+                part_id,
+                CONVEYOR_PART_WRAP.get(part_id, 0.0),
+                base[1],
+                base[2],
+            )
 
     def _close_gripper(self, robot_id: int) -> None:
         for fj in (1, 2):
@@ -330,6 +384,11 @@ class MujocoCellEnv:
                 self._set_body_pos(part_id, [0.0, 0.0, -1.0])
             return
 
+        if self.scenario == "conveyor_feed":
+            for part_id, pos in CONVEYOR_PART_STARTS.items():
+                self._set_body_pos(part_id, list(pos))
+            return
+
         for part_id, base in PART_DEFAULTS.items():
             pos = list(base)
             if self.scenario == "misaligned":
@@ -374,6 +433,52 @@ class MujocoCellEnv:
                 if "collision" not in self._events:
                     self._events.append("collision")
                 break
+
+    def teleport_part(self, part_id: str, target: str) -> dict[str, Any]:
+        """Directly move a part to a named zone (bin_a, bin_b, station_1, station_2)."""
+        if part_id not in self._part_at:
+            return {"ok": False, "error": f"Unknown part: {part_id}"}
+
+        # Release from any gripper
+        for i in range(self.num_robots):
+            if self._holding[i] == part_id:
+                self._holding[i] = None
+                self._gripper_closed[i] = False
+                self._open_gripper(i)
+
+        _bin_centers: dict[str, list[float]] = {
+            "bin_a": [0.25, 0.15, 0.44],
+            "bin_b": [0.25, -0.15, 0.44],
+        }
+        _part_offsets: dict[str, list[float]] = {
+            "part_1": [-0.03, -0.03, 0.02],
+            "part_2": [0.0, 0.0, 0.02],
+            "part_3": [0.03, 0.03, 0.02],
+        }
+
+        old_at = self._part_at[part_id]
+
+        if target in ("station_1", "station_2"):
+            site_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_SITE, target)
+            if site_id >= 0:
+                sp = self._model.site_pos[site_id]
+                self._set_body_pos(part_id, [float(sp[0]), float(sp[1]), float(sp[2]) + 0.025])
+            if old_at in self._station_status:
+                self._station_status[old_at] = "empty"
+            self._station_status[target] = "occupied"
+            self._part_at[part_id] = target
+        elif target in _bin_centers:
+            cx, cy, cz = _bin_centers[target]
+            dx, dy, dz = _part_offsets.get(part_id, [0.0, 0.0, 0.02])
+            self._set_body_pos(part_id, [cx + dx, cy + dy, cz + dz])
+            if old_at in self._station_status:
+                self._station_status[old_at] = "empty"
+            self._part_at[part_id] = target
+        else:
+            return {"ok": False, "error": f"Unknown target: {target}"}
+
+        mujoco.mj_forward(self._model, self._data)
+        return {"ok": True, "part": part_id, "from": old_at, "target": target}
 
     # Back-compat for verify_poses
     def _move_arm(self, robot_id: int, qpos: dict[str, float]) -> None:

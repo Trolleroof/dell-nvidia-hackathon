@@ -11,6 +11,12 @@ DASHBOARD_WIDTH = 1280
 DASHBOARD_HEIGHT = 720
 DASHBOARD_CAMERA = "dashboard"
 
+# Framed overview of the full cell (free camera — XML fixed cam quat was misaligned)
+DASHBOARD_LOOKAT = (0.45, 0.0, 0.45)
+DASHBOARD_DISTANCE = 1.35
+DASHBOARD_ELEVATION = -28.0
+DASHBOARD_AZIMUTH = 132.0
+
 # Legacy default (kept for callers that omit size)
 DEFAULT_WIDTH = DASHBOARD_WIDTH
 DEFAULT_HEIGHT = DASHBOARD_HEIGHT
@@ -39,10 +45,19 @@ class CellRenderer:
         elif isinstance(camera, int):
             cam_id = camera
         self._camera_id = cam_id if cam_id >= 0 else None
+        self._free_camera = mujoco.MjvCamera()
+        mujoco.mjv_defaultFreeCamera(model, self._free_camera)
+        self._free_camera.lookat[:] = DASHBOARD_LOOKAT
+        self._free_camera.distance = DASHBOARD_DISTANCE
+        self._free_camera.elevation = DASHBOARD_ELEVATION
+        self._free_camera.azimuth = DASHBOARD_AZIMUTH
+        self._use_free_camera = camera == DASHBOARD_CAMERA or cam_id < 0
 
     def render_rgb(self, data: mujoco.MjData) -> np.ndarray:
         """Return H×W×3 uint8 RGB array."""
-        if self._camera_id is not None:
+        if self._use_free_camera:
+            self._renderer.update_scene(data, camera=self._free_camera)
+        elif self._camera_id is not None:
             self._renderer.update_scene(data, camera=self._camera_id)
         else:
             self._renderer.update_scene(data)

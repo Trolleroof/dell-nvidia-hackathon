@@ -26,5 +26,6 @@ factorymind/telemetry/gb10_manifest.json
 # MuJoCo / sim caches
 *.mjcf.bak
 factorymind/factorymind/sim/a/frames/*.png
+factorymind/factorymind/sim/a/frames/**/*.png
 factorymind/factorymind/sim/a/frames/latest.json
 factorymind/factorymind/sim/a/frames/latest.png
