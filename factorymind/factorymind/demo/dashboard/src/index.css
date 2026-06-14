@@ -1,211 +1,294 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,600..850,80..100&family=Nunito:wght@400;600;700;800&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ════════════════════════════════════════════════════════════════════════
-   MINIMALIST MONOCHROME — dark base
-   Black is the canvas. White is the accent. Emphasis = inversion.
-   No color. No radius. No shadows. Lines, serifs, and negative space.
-   ════════════════════════════════════════════════════════════════════════ */
-
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  --background: #1a1a1a; /* official dark background */
-  --foreground: #ffffff;
-  --muted: #232323; /* lifted subtle panel */
-  --muted-foreground: #a8a8a8; /* gray secondary text */
-  --faint: #6b6b6b; /* tertiary / placeholder gray */
-  --accent: #ffffff; /* white IS the neutral accent */
-  --accent-foreground: #1a1a1a; /* dark on white (inversion) */
-  --border: #ffffff; /* the line system */
-  --border-light: #353535; /* subtle hairline dividers */
-  --card: #1a1a1a;
-  --card-foreground: #ffffff;
-  --ring: #ffffff;
+  --background: #fdfcf8;
+  --foreground: #2c2c24;
+  --muted: #f0ebe5;
+  --muted-foreground: #78786c;
+  --faint: #9b9587;
+  --accent: #e6dccd;
+  --accent-foreground: #4a4a40;
+  --border: #ded8cf;
+  --border-light: rgba(222, 216, 207, 0.62);
+  --card: rgba(254, 254, 250, 0.88);
+  --card-foreground: #2c2c24;
+  --ring: rgba(93, 112, 82, 0.34);
 
-  /* Official Dell × NVIDIA brand values. */
-  --nv: #76b900; /* NVIDIA green */
-  --nv-bright: #8fdc00; /* legible green for text/hover on dark */
-  --dell: #007db8; /* Dell blue */
-  --dell-bright: #2fa4de; /* legible blue for text on dark */
+  --nv: #5d7052;
+  --nv-bright: #7fa66a;
+  --dell: #2a83a3;
+  --dell-bright: #38a9d1;
+  --clay: #c18c5d;
+  --sun: #efc85f;
+  --berry: #a85448;
+
+  --shadow-soft: 0 16px 42px -22px rgba(93, 112, 82, 0.42);
+  --shadow-float: 0 28px 70px -38px rgba(193, 140, 93, 0.5);
+  --shadow-pop: 0 18px 38px -24px rgba(42, 131, 163, 0.45);
 }
 
 html,
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
   margin: 0;
-  background: var(--background);
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at 12% -8%, rgba(239, 200, 95, 0.34), transparent 31rem),
+    radial-gradient(circle at 88% 12%, rgba(56, 169, 209, 0.22), transparent 28rem),
+    linear-gradient(135deg, #fdfcf8 0%, #f7f0e4 50%, #fbf7ef 100%);
   color: var(--foreground);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: "Nunito", ui-sans-serif, system-ui, sans-serif;
   font-size: 15px;
   letter-spacing: 0;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Layered textures — required to keep the dark plane from going flat.
-   Horizontal white hairlines (paper grain) + fractal noise, both whisper-faint. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
-  pointer-events: none;
   z-index: 0;
-  background-image: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 1px,
-    #ffffff 1px,
-    #ffffff 2px
-  );
-  background-size: 100% 4px;
-  opacity: 0.025;
+  pointer-events: none;
+  opacity: 0.04;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.75'/%3E%3C/svg%3E");
 }
 
 body::after {
   content: "";
   position: fixed;
-  inset: 0;
-  pointer-events: none;
+  inset: auto -12vw -18vh auto;
+  width: 42vw;
+  height: 42vw;
   z-index: 0;
-  opacity: 0.025;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  pointer-events: none;
+  border-radius: 56% 44% 68% 32% / 44% 62% 38% 56%;
+  background: rgba(193, 140, 93, 0.16);
+  filter: blur(46px);
 }
 
 ::selection {
-  background: var(--foreground);
-  color: var(--background);
+  background: var(--nv);
+  color: var(--primary-foreground, #f3f4f1);
 }
 
-/* ── Reusable surface vocabulary ─────────────────────────────────────────── */
+button,
+input,
+textarea {
+  font: inherit;
+}
+
 @layer components {
   .card {
-    @apply border border-border p-5 relative overflow-hidden;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border-light);
+    border-radius: 2rem;
     background: var(--card);
+    box-shadow: var(--shadow-soft);
+    padding: 1.25rem;
+    backdrop-filter: blur(18px);
+    transition: transform 320ms ease, box-shadow 320ms ease, border-color 320ms ease;
   }
+
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background:
+      radial-gradient(circle at 12% 0%, rgba(239, 200, 95, 0.12), transparent 18rem),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.52), transparent 42%);
+  }
+
+  .card > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-float);
+  }
+
   .card-title {
-    @apply m-0 mb-4 font-mono text-[11px] font-semibold tracking-[0.2em] uppercase text-muted-foreground flex items-center gap-3;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0 0 1rem;
+    color: var(--muted-foreground);
+    font-family: "Nunito", ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.73rem;
+    font-weight: 800;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
   }
-  /* A registration tick — a thin white rule, the section's punctuation. */
+
   .tick {
-    @apply w-[2px] h-4 bg-foreground;
+    width: 0.85rem;
+    height: 0.85rem;
+    border-radius: 60% 40% 36% 64% / 48% 64% 36% 52%;
+    background: linear-gradient(135deg, var(--nv), var(--sun));
+    box-shadow: 0 8px 18px -9px rgba(93, 112, 82, 0.8);
   }
+
   .stat {
-    @apply border border-border-light p-3;
-    background: var(--background);
+    border: 1px solid var(--border-light);
+    border-radius: 1.4rem 2.1rem 1.25rem 1.85rem;
+    background: rgba(255, 255, 255, 0.48);
+    padding: 0.85rem;
   }
+
   .stat-k {
-    @apply font-mono text-[10px] tracking-[0.15em] uppercase text-faint;
+    color: var(--muted-foreground);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
   }
+
   .stat-v {
-    @apply text-2xl font-display font-semibold tabular-nums mt-1;
-  }
-  .pill {
-    @apply inline-block border border-border px-2 py-px font-mono text-[10px] font-semibold tracking-[0.12em] uppercase;
-  }
-  /* Outline button → fills on hover (instant). */
-  .btn {
-    @apply border border-border px-4 py-2 font-mono text-[11px] font-semibold tracking-[0.12em] uppercase cursor-pointer transition-none;
-    background: transparent;
+    margin-top: 0.2rem;
     color: var(--foreground);
+    font-family: "Fraunces", ui-serif, Georgia, serif;
+    font-size: 1.65rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
   }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid rgba(93, 112, 82, 0.24);
+    background: rgba(93, 112, 82, 0.1);
+    color: var(--nv);
+    padding: 0.18rem 0.65rem;
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+
+  .btn {
+    min-height: 2.75rem;
+    border-radius: 999px;
+    border: 2px solid var(--clay);
+    background: transparent;
+    color: var(--clay);
+    padding: 0.65rem 1.35rem;
+    font-weight: 800;
+    transition: transform 260ms ease, box-shadow 260ms ease, background 260ms ease, color 260ms ease;
+  }
+
   .btn:hover {
-    background: var(--foreground);
-    color: var(--background);
+    transform: translateY(-1px) scale(1.03);
+    background: rgba(193, 140, 93, 0.1);
+    box-shadow: var(--shadow-float);
   }
+
+  .btn:active {
+    transform: scale(0.96);
+  }
+
   .btn:focus-visible {
-    outline: 3px solid var(--foreground);
-    outline-offset: 3px;
+    outline: 0;
+    box-shadow: 0 0 0 4px var(--ring);
   }
 }
 
-/* ════════════════════════════════════════════════════════════════════════
-   Agent console
-   ════════════════════════════════════════════════════════════════════════ */
+.ambient-blob {
+  position: fixed;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(42px);
+  opacity: 0.75;
+}
+
+.ambient-blob.one {
+  left: -8rem;
+  top: 9rem;
+  width: 22rem;
+  height: 22rem;
+  border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+  background: rgba(93, 112, 82, 0.18);
+}
+
+.ambient-blob.two {
+  right: 5vw;
+  top: 15rem;
+  width: 18rem;
+  height: 18rem;
+  border-radius: 36% 64% 68% 32% / 60% 44% 56% 40%;
+  background: rgba(56, 169, 209, 0.16);
+}
 
 .agent-shell {
-  margin-top: 0;
+  margin-top: 1.75rem;
 }
 
-/* Editorial section eyebrow — mono caps with a leading rule. */
 .agent-eyebrow {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 14px;
-  margin: 28px 0 18px;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
+  gap: 0.75rem;
+  margin: 1.2rem 0 1rem;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: var(--shadow-soft);
   color: var(--muted-foreground);
-}
-/* NVIDIA-style green lead on the section rule. */
-.agent-eyebrow::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: linear-gradient(90deg, var(--nv) 0 48px, var(--border-light) 48px);
-}
-.agent-eyebrow span:first-child {
-  color: var(--nv-bright);
+  padding: 0.55rem 0.9rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  backdrop-filter: blur(14px);
 }
 
-.agent-status-inline {
-  margin-left: auto;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  background: var(--background);
-}
-.agent-status-inline strong {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.agent-status-inline span:last-child {
-  color: var(--muted-foreground);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-}
-/* Green registration square when running; hollow when idle. */
-.agent-status-dot {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 auto;
-  background: var(--nv-bright);
-  outline: 2px solid var(--nv);
-  outline-offset: 2px;
-}
-.agent-status-dot.is-idle {
-  background: transparent;
-  outline-color: var(--muted-foreground);
+.agent-eyebrow span:first-child {
+  color: var(--clay);
 }
 
 .agent-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(380px, 0.65fr);
-  gap: 0;
+  grid-template-columns: minmax(0, 1.35fr) minmax(22rem, 0.65fr);
+  gap: 1rem;
   align-items: start;
-  border: 1px solid var(--border);
 }
-.agent-sim-stack {
-  padding: 22px;
-  border-right: 1px solid var(--border);
-  background: var(--background);
-}
+
+.agent-sim-stack,
 .agent-chat-card {
-  padding: 22px;
-  background: var(--background);
+  border: 1px solid var(--border-light);
+  background: rgba(254, 254, 250, 0.74);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(20px);
+}
+
+.agent-sim-stack {
+  border-radius: 2.4rem 1.6rem 2.1rem 1.8rem;
+  padding: 1.15rem;
+}
+
+.agent-chat-card {
+  position: sticky;
+  top: 1rem;
+  min-height: calc(100vh - 12rem);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border-radius: 1.65rem 2.6rem 1.9rem 2.25rem;
+  padding: 1.15rem;
 }
 
 .agent-control-strip,
@@ -213,137 +296,196 @@ body::after {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-}
-.agent-control-strip {
-  margin-bottom: 14px;
+  gap: 0.65rem;
 }
 
-/* Mode tabs — outlined segmented control, active tab inverts. */
+.agent-control-strip {
+  margin-bottom: 0.9rem;
+}
+
 .agent-mode-tabs {
   display: inline-flex;
   overflow: hidden;
-  border: 1px solid var(--border);
-  background: var(--background);
+  border: 1px solid rgba(93, 112, 82, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
+
 .agent-mode-tabs button,
 .agent-primary,
 .agent-secondary,
 .agent-composer button {
+  min-height: 2.75rem;
   border: 0;
+  border-radius: 999px;
   cursor: pointer;
-  color: var(--foreground);
-  font-family: "JetBrains Mono", monospace;
-  font-weight: 600;
-  letter-spacing: 0.12em;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  font-size: 12px;
-  transition: none;
-}
-.agent-mode-tabs button {
-  padding: 10px 16px;
-  background: transparent;
-  color: var(--muted-foreground);
-  border-right: 1px solid var(--border);
-}
-.agent-mode-tabs button:last-child {
-  border-right: 0;
-}
-.agent-mode-tabs button.is-active {
-  color: var(--nv-bright);
-  background: transparent;
-  box-shadow: inset 0 -2px 0 var(--nv);
+  transition: transform 260ms ease, box-shadow 260ms ease, background 260ms ease, color 260ms ease;
 }
 
-/* Primary = inverted solid (white/black); hover hollows out. */
+.agent-mode-tabs button {
+  padding: 0.75rem 1.1rem;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.agent-mode-tabs button.is-active {
+  background: var(--nv);
+  color: #f3f4f1;
+  box-shadow: var(--shadow-soft);
+}
+
 .agent-primary,
 .agent-secondary {
-  padding: 11px 18px;
+  padding: 0.75rem 1.25rem;
 }
+
 .agent-primary {
-  background: var(--nv);
-  color: #000000;
+  background: linear-gradient(135deg, var(--nv), #6f8f5f);
+  color: #f3f4f1;
+  box-shadow: var(--shadow-soft);
 }
-.agent-primary:hover {
-  background: transparent;
-  color: var(--nv-bright);
-  box-shadow: inset 0 0 0 1px var(--nv);
+
+.agent-primary:hover,
+.agent-composer button:hover {
+  transform: translateY(-1px) scale(1.04);
+  box-shadow: 0 20px 34px -22px rgba(93, 112, 82, 0.72);
 }
-/* Secondary = outline; hover fills. */
+
 .agent-secondary {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--border);
+  border: 2px solid rgba(193, 140, 93, 0.74);
+  background: rgba(255, 255, 255, 0.36);
+  color: var(--clay);
 }
+
 .agent-secondary:hover {
-  background: var(--foreground);
-  color: var(--accent-foreground);
+  transform: translateY(-1px) scale(1.03);
+  background: rgba(193, 140, 93, 0.12);
+}
+
+.agent-mode-tabs button:active,
+.agent-primary:active,
+.agent-secondary:active,
+.agent-composer button:active {
+  transform: scale(0.96);
 }
 
 .agent-mode-tabs button:focus-visible,
 .agent-primary:focus-visible,
 .agent-secondary:focus-visible,
-.agent-composer button:focus-visible {
-  outline: 3px solid var(--foreground);
-  outline-offset: 3px;
+.agent-composer button:focus-visible,
+.agent-composer textarea:focus-visible,
+.agent-speed-row input:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--ring);
+}
+
+.agent-status-inline {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 2.75rem;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--muted-foreground);
+  padding: 0.45rem 0.85rem;
+}
+
+.agent-status-inline strong {
+  color: var(--foreground);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.agent-status-inline span:last-child {
+  font-size: 0.78rem;
+}
+
+.agent-status-dot {
+  width: 0.76rem;
+  height: 0.76rem;
+  flex: 0 0 auto;
+  border-radius: 60% 40% 55% 45% / 42% 60% 40% 58%;
+  background: var(--nv-bright);
+  box-shadow: 0 0 0 5px rgba(127, 166, 106, 0.18);
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+
+.agent-status-dot.is-idle {
+  background: var(--faint);
+  animation: none;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.78); opacity: 0.55; }
 }
 
 .agent-speed-row {
-  margin-bottom: 16px;
+  margin-bottom: 1rem;
   color: var(--muted-foreground);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
+
 .agent-speed-row label {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 0.8rem;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.46);
+  padding: 0.55rem 0.85rem;
 }
+
 .agent-speed-row input[type="range"] {
-  accent-color: var(--nv);
-  height: 2px;
+  width: 10rem;
+  accent-color: var(--clay);
 }
 
 .agent-sim-frame .card {
   min-height: 400px;
+  border-radius: 2.7rem 1.5rem 2.35rem 1.8rem;
 }
+
 .agent-sim-frame img,
 .agent-sim-frame svg {
   height: min(54vh, 520px);
   min-height: 340px;
 }
 
-.agent-chat-card {
-  position: sticky;
-  top: 16px;
-  min-height: calc(100vh - 200px);
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
 .agent-chat-header {
-  border-bottom: 2px solid var(--border);
-  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 0.9rem;
 }
+
 .agent-chat-header strong {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  text-transform: none;
+  display: block;
+  color: var(--foreground);
+  font-family: "Fraunces", ui-serif, Georgia, serif;
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1.05;
 }
+
 .agent-chat-header .agent-chat-sub {
   display: block;
-  margin-top: 4px;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  margin-top: 0.25rem;
   color: var(--muted-foreground);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
+
 .agent-thread {
   flex: 1;
   min-height: 230px;
@@ -351,103 +493,102 @@ body::after {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding-right: 4px;
-}
-.agent-thread:empty::before {
-  content: "Awaiting command.";
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--faint);
+  gap: 0.8rem;
+  padding-right: 0.25rem;
 }
 
-/* Speakers color-coded by brand: operator = Dell blue, agent = NVIDIA green.
-   Sleek left-accent rule + faint tint, not a filled bubble. */
-.agent-message {
-  width: 88%;
-  padding: 11px 14px;
-  background: var(--muted);
-  border: 1px solid var(--border-light);
-}
-.agent-message.operator {
-  align-self: flex-end;
-  border-left: 3px solid var(--dell-bright);
-  background: rgba(56, 182, 255, 0.07);
-}
-.agent-message.agent {
-  align-self: flex-start;
-  border-left: 3px solid var(--nv-bright);
-  background: rgba(149, 230, 0, 0.06);
-}
-.agent-message span {
-  display: block;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
+.agent-thread:empty::before {
+  content: "Awaiting command.";
+  color: var(--faint);
+  font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+
+.agent-message {
+  width: 88%;
+  border: 1px solid var(--border-light);
+  padding: 0.8rem 0.9rem;
+  box-shadow: 0 14px 28px -24px rgba(93, 112, 82, 0.65);
+}
+
+.agent-message.operator {
+  align-self: flex-end;
+  border-radius: 1.4rem 1.8rem 0.85rem 1.8rem;
+  background: rgba(56, 169, 209, 0.12);
+}
+
+.agent-message.agent {
+  align-self: flex-start;
+  border-radius: 1.8rem 1.4rem 1.8rem 0.85rem;
+  background: rgba(93, 112, 82, 0.12);
+}
+
+.agent-message span {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
 .agent-message.operator span {
-  color: var(--dell-bright);
+  color: var(--dell);
 }
+
 .agent-message.agent span {
-  color: var(--nv-bright);
+  color: var(--nv);
 }
+
 .agent-message p {
-  margin: 6px 0 0;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 13px;
-  line-height: 1.6;
+  margin: 0.35rem 0 0;
+  font-size: 0.93rem;
+  line-height: 1.55;
 }
 
 .agent-composer {
   display: grid;
-  gap: 10px;
+  gap: 0.75rem;
 }
+
 .agent-composer textarea {
   width: 100%;
+  min-height: 7.5rem;
   resize: vertical;
-  border: 0;
-  border-bottom: 2px solid var(--border);
-  padding: 12px 2px;
-  background: transparent;
+  border: 1px solid var(--border-light);
+  border-radius: 1.4rem 2rem 1.4rem 1.8rem;
+  background: rgba(255, 255, 255, 0.54);
   color: var(--foreground);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 14px;
-  line-height: 1.6;
+  padding: 0.95rem 1rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
   outline: none;
+  transition: box-shadow 220ms ease, border-color 220ms ease, background 220ms ease;
 }
+
 .agent-composer textarea::placeholder {
   color: var(--faint);
-  font-style: italic;
 }
-.agent-composer textarea:focus,
-.agent-composer textarea:focus-visible {
-  border-bottom-width: 4px;
-  border-bottom-color: var(--nv);
+
+.agent-composer textarea:focus {
+  border-color: rgba(93, 112, 82, 0.42);
+  background: rgba(255, 255, 255, 0.74);
 }
-/* Send = NVIDIA-green solid with an arrow; hover hollows out. */
+
 .agent-composer button {
-  padding: 13px;
-  background: var(--nv);
-  color: #000000;
-}
-.agent-composer button:hover {
-  background: transparent;
-  color: var(--nv-bright);
-  box-shadow: inset 0 0 0 1px var(--nv);
+  background: linear-gradient(135deg, var(--clay), #d5a069);
+  color: #fff;
+  padding: 0.9rem 1.2rem;
+  box-shadow: var(--shadow-float);
 }
 
 @media (max-width: 1180px) {
   .agent-grid {
     grid-template-columns: 1fr;
   }
-  .agent-sim-stack {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
+
   .agent-chat-card {
     position: static;
     min-height: auto;
@@ -460,16 +601,24 @@ body::after {
     width: 100%;
     flex-wrap: wrap;
   }
+
   .agent-mode-tabs,
   .agent-primary,
   .agent-secondary,
   .agent-speed-row label {
     width: 100%;
   }
+
   .agent-mode-tabs button {
     flex: 1;
-    padding-inline: 10px;
+    padding-inline: 0.7rem;
   }
+
+  .agent-speed-row input[type="range"] {
+    flex: 1;
+    width: auto;
+  }
+
   .agent-sim-frame img,
   .agent-sim-frame svg {
     min-height: 280px;
@@ -478,28 +627,34 @@ body::after {
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: var(--background);
-}
-::-webkit-scrollbar-thumb {
-  background: var(--border-light);
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--muted-foreground);
+  width: 10px;
+  height: 10px;
 }
 
-/* Motion: minimal, instant. A 120ms fade is the only flourish. */
+::-webkit-scrollbar-track {
+  background: rgba(240, 235, 229, 0.55);
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(93, 112, 82, 0.36);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(93, 112, 82, 0.58);
+}
+
 @keyframes slidein {
   from {
     opacity: 0;
+    transform: translateY(0.35rem) rotate(-0.4deg);
   }
   to {
     opacity: 1;
+    transform: translateY(0) rotate(0);
   }
 }
+
 .animate-slidein {
-  animation: slidein 0.12s linear;
+  animation: slidein 0.3s ease-out;
 }

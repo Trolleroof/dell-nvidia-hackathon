@@ -50,7 +50,11 @@ export function AgentSimPage({
 }: Props) {
   const [draft, setDraft] = useState("");
   const autoStepBusy = useRef(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Pre-seeded so the channel self-explains: judges see what a command looks like.
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { role: "operator", text: "sort the green parts into station_2" },
+    { role: "agent", text: "Acknowledged — r0 grips the green part, r1 holds clear. Running the cell via on-device oracle policy." },
+  ]);
   const [scenario, setScenario] = useState("default");
 
   const pickScenario = async (id: string) => {
@@ -171,8 +175,8 @@ export function AgentSimPage({
           </div>
 
           {/* Scenario switcher — swap the cell's task / layout */}
-          <div className="mb-3.5 flex flex-wrap items-center gap-2">
-            <span className="mr-1 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          <div className="mb-3.5 flex flex-wrap items-center gap-2 rounded-[1.8rem_1.2rem_1.6rem_1.35rem] border border-border-light bg-white/45 p-2 shadow-[0_14px_28px_-26px_rgba(93,112,82,.65)]">
+            <span className="mr-1 px-2 text-[11px] font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
               Scenario
             </span>
             {SCENARIOS.map(([id, label]) => (
@@ -180,10 +184,10 @@ export function AgentSimPage({
                 key={id}
                 onClick={() => pickScenario(id)}
                 title={`Load the "${label}" cell task / layout`}
-                className={`border px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.1em] transition-colors duration-100 ${
+                className={`rounded-full px-3 py-2 text-[11px] font-extrabold uppercase tracking-[0.09em] transition-all duration-300 active:scale-95 ${
                   scenario === id
-                    ? "border-nvidia bg-nvidia text-background"
-                    : "border-border-light text-muted-foreground hover:border-foreground hover:text-foreground"
+                    ? "bg-nvidia text-white shadow-[0_12px_24px_-16px_rgba(93,112,82,.8)]"
+                    : "border border-border-light bg-white/45 text-muted-foreground hover:-translate-y-0.5 hover:border-clay hover:text-clay"
                 }`}
               >
                 {label}

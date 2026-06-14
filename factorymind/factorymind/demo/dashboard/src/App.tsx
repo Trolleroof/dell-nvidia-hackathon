@@ -13,21 +13,25 @@ export default function App() {
   };
 
   return (
-    <div className="relative z-[1] max-w-[1920px] mx-auto px-[22px] pt-[18px] pb-7">
-      <Header />
-      <AgentSimPage
-        playing={t.playing}
-        setPlaying={t.setPlaying}
-        speed={t.speed}
-        setSpeed={t.setSpeed}
-        liveUrl={t.liveUrl}
-        setLiveUrl={t.setLiveUrl}
-        latest={t.latest}
-        stream={t.stream}
-        step={t.step}
-        resetKey={resetKey}
-        onReset={onReset}
-      />
-    </div>
+    <>
+      <div className="ambient-blob one" />
+      <div className="ambient-blob two" />
+      <div className="relative z-[1] mx-auto max-w-[1920px] px-4 pb-8 pt-5 sm:px-6 lg:px-8">
+        <Header />
+        <AgentSimPage
+          playing={t.playing}
+          setPlaying={t.setPlaying}
+          speed={t.speed}
+          setSpeed={t.setSpeed}
+          liveUrl={t.liveUrl}
+          setLiveUrl={t.setLiveUrl}
+          latest={t.latest}
+          stream={t.stream}
+          step={t.step}
+          resetKey={resetKey}
+          onReset={onReset}
+        />
+      </div>
+    </>
   );
 }

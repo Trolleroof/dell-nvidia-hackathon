@@ -6,46 +6,51 @@ function fmtMs(ms?: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`;
 }
 
-// ── Tier 1: Inference latency + Diffusion-vs-AR race ──────────────────────────
+// ── Tier 1: wall-clock latency, Diffusion vs AR ───────────────────────────────
 export function MetricsPanel({ d, a }: { d?: TelemetryRow; a?: TelemetryRow }) {
   const dl = d?.latency_ms;
   const al = a?.latency_ms;
-  // Race bars scale by SPEED (1/latency) so the faster model fills more — a more
-  // intuitive "race" than raw latency width.
-  const ds = dl ? 1 / dl : 0;
-  const as = al ? 1 / al : 0;
-  const maxS = Math.max(ds, as, 1e-9);
+  // Bars show WALL-CLOCK ms — lower (shorter) is faster. Honest metric, not tok/s.
+  const maxL = Math.max(dl ?? 0, al ?? 0, 1);
   const faster = dl != null && al != null ? (dl <= al ? "d" : "a") : null;
+  const speedup = dl && al ? (al / dl).toFixed(2) : null;
 
   return (
     <div className="card">
       <h2 className="card-title">
         <span className="tick" />
-        Inference Latency
+        Latency · Diffusion vs AR
+        <span className="ml-auto inline-block border border-dell-bright px-2 py-px font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-dell-bright">
+          Model estimate
+        </span>
       </h2>
       <p className="-mt-2 mb-4 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-        Projected on-device decision time · no network round-trip
+        Wall-clock per decision · lower = faster · projected on-device (nvfp4)
       </p>
 
-      {/* Headline — DiffusionGemma local latency */}
-      <div className="flex items-end gap-3 border-b border-border-light pb-4">
-        <div className="font-display text-4xl font-extrabold tabular-nums leading-none text-nvidia-bright">
-          {fmtMs(dl)}
+      {/* Headline — both numbers side by side, no empty bar */}
+      <div className="flex items-end gap-4 border-b border-border-light pb-4">
+        <div>
+          <div className="font-display text-4xl font-extrabold tabular-nums leading-none text-nvidia-bright">{fmtMs(dl)}</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-foreground">Diffusion · est.</div>
         </div>
-        <div className="pb-0.5 font-mono text-[10px] uppercase leading-snug tracking-[0.12em] text-muted-foreground">
-          <div className="text-foreground">DiffusionGemma</div>
-          <div>{d?._tokS ? `${Math.round(d._tokS)} tok/s` : "—"} · local · nvfp4</div>
+        <div className="pb-0.5 font-mono text-2xl text-muted-foreground">vs</div>
+        <div>
+          <div className="font-display text-4xl font-extrabold tabular-nums leading-none text-dell-bright">{fmtMs(al)}</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">AR · Gemma · est.</div>
         </div>
-        <span className="ml-auto pill">Projected</span>
+        {speedup && (
+          <div className="ml-auto pb-0.5 text-right">
+            <div className="font-display text-xl font-extrabold tabular-nums text-nvidia-bright">{speedup}×</div>
+            <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">faster</div>
+          </div>
+        )}
       </div>
 
-      {/* Diffusion vs AR race */}
+      {/* ms race bars — lower = faster */}
       <div className="mt-4">
-        <div className="mb-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          Diffusion vs AR · longer = faster
-        </div>
-        <Bar label="Diffusion" value={dl} tokS={d?._tokS} pct={(ds / maxS) * 100} color="var(--nv-bright)" win={faster === "d"} />
-        <Bar label="AR · Gemma" value={al} tokS={a?._tokS} pct={(as / maxS) * 100} color="var(--dell-bright)" win={faster === "a"} />
+        <Bar label="Diffusion" value={dl} pct={dl != null ? (dl / maxL) * 100 : 0} color="var(--nv-bright)" win={faster === "d"} />
+        <Bar label="AR · Gemma" value={al} pct={al != null ? (al / maxL) * 100 : 0} color="var(--dell-bright)" win={faster === "a"} />
       </div>
     </div>
   );
@@ -54,14 +59,12 @@ export function MetricsPanel({ d, a }: { d?: TelemetryRow; a?: TelemetryRow }) {
 function Bar({
   label,
   value,
-  tokS,
   pct,
   color,
   win,
 }: {
   label: string;
   value?: number;
-  tokS?: number;
   pct: number;
   color: string;
   win: boolean;
@@ -71,13 +74,10 @@ function Bar({
       <div className="mb-1 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.1em]">
         <span className="text-foreground">{label}</span>
         {win && <span style={{ color }}>▲ faster</span>}
-        <span className="ml-auto tabular-nums text-muted-foreground">
-          {fmtMs(value)}
-          {tokS ? ` · ${Math.round(tokS)} tok/s` : ""}
-        </span>
+        <span className="ml-auto tabular-nums text-muted-foreground">{fmtMs(value)}</span>
       </div>
       <div className="h-2 w-full border border-border-light bg-[var(--muted)]">
-        <div className="h-full transition-all duration-200" style={{ width: `${Math.max(4, pct)}%`, background: color }} />
+        <div className="h-full transition-all duration-200" style={{ width: `${Math.max(6, pct)}%`, background: color }} />
       </div>
     </div>
   );
@@ -111,7 +111,7 @@ export function ActivityLog({ stream }: { stream: TelemetryRow[] }) {
         {rows.map((r, i) => (
           <div
             key={`${r.step}-${i}`}
-            className="grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-border-light pb-1.5 font-mono text-[11px]"
+            className={`grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-border-light pb-1.5 font-mono text-[11px] ${i === 0 ? "animate-slidein" : ""}`}
           >
             <span className="tabular-nums text-muted-foreground">#{String(r.step).padStart(2, "0")}</span>
             <span className="truncate text-foreground">{r.action_summary}</span>

@@ -4,9 +4,6 @@ export default {
   theme: {
     extend: {
       colors: {
-        // ── Minimalist Monochrome (dark base) ──────────────────────────────
-        // Single source of truth lives in :root (index.css). Black IS the
-        // canvas; white IS the accent. Inversion = black-on-white for emphasis.
         background: "var(--background)",
         foreground: "var(--foreground)",
         muted: "var(--muted)",
@@ -19,44 +16,40 @@ export default {
         "card-foreground": "var(--card-foreground)",
         ring: "var(--ring)",
 
-        // ── Brand accents — restrained punctuation on the mono canvas ──────
-        // Green is the hero accent (NVIDIA), blue is secondary (Dell). Used only
-        // for live/interactive/brand emphasis; structure stays black & white.
         nvidia: { DEFAULT: "var(--nv)", bright: "var(--nv-bright)" },
         dell: { DEFAULT: "var(--dell)", bright: "var(--dell-bright)" },
+        clay: "var(--clay)",
+        sun: "var(--sun)",
+        berry: "var(--berry)",
         cloud: "var(--dell-bright)",
 
-        // Neutral structural aliases.
         ink: "var(--background)",
-        panel: "var(--background)",
-        panel2: "var(--background)",
+        panel: "var(--card)",
+        panel2: "var(--muted)",
         line: "var(--border)",
         lineSoft: "var(--border-light)",
         text: "var(--foreground)",
         dim: "var(--muted-foreground)",
         faint: "var(--faint)",
-        danger: "var(--foreground)",
-        warn: "var(--foreground)",
+        danger: "var(--berry)",
+        warn: "var(--sun)",
       },
       fontFamily: {
-        // Official brand spec: monospaced type throughout. Every alias resolves
-        // to the same mono stack so existing class names stay in-system.
-        display: ['"JetBrains Mono"', "ui-monospace", "monospace"],
-        serif: ['"JetBrains Mono"', "ui-monospace", "monospace"],
-        sans: ['"JetBrains Mono"', "ui-monospace", "monospace"],
+        display: ['"Fraunces"', "ui-serif", "Georgia", "serif"],
+        serif: ['"Fraunces"', "ui-serif", "Georgia", "serif"],
+        sans: ['"Nunito"', "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ['"JetBrains Mono"', "ui-monospace", "monospace"],
       },
       borderRadius: {
-        // Sharp everything. Non-negotiable.
         none: "0",
-        DEFAULT: "0",
-        sm: "0",
-        md: "0",
-        lg: "0",
-        xl: "0",
-        "2xl": "0",
-        "3xl": "0",
-        full: "0",
+        DEFAULT: "1rem",
+        sm: "0.75rem",
+        md: "1rem",
+        lg: "1.25rem",
+        xl: "1.5rem",
+        "2xl": "2rem",
+        "3xl": "2.5rem",
+        full: "9999px",
       },
     },
   },
