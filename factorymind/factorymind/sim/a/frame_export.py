@@ -56,6 +56,41 @@ def publish_latest_frame(
     return latest
 
 
+def publish_latest_rgb(
+    rgb,
+    *,
+    step: int = 0,
+    width: int = DASHBOARD_WIDTH,
+    height: int = DASHBOARD_HEIGHT,
+    frames_dir: Path | None = None,
+) -> Path:
+    """Write an in-memory RGB array straight to frames/latest.png + sidecar.
+
+    Used for live smoothing: the substep loop renders many intermediate frames,
+    so we skip the per-step PNG-on-disk that publish_latest_frame() copies from.
+    """
+    try:
+        import imageio.v3 as iio
+    except ImportError as exc:  # pragma: no cover - imageio is a hard dep for frames
+        raise ImportError("pip install imageio for PNG export") from exc
+
+    out_dir = frames_dir or default_frames_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    latest = out_dir / LATEST_PNG
+    iio.imwrite(latest, rgb)
+
+    meta = {
+        "path": str(latest.resolve()),
+        "source": "live_rgb",
+        "step": step,
+        "width": width,
+        "height": height,
+        "updated_at": time.time(),
+    }
+    (out_dir / LATEST_JSON).write_text(json.dumps(meta, indent=2) + "\n")
+    return latest
+
+
 def read_latest_frame_meta(frames_dir: Path | None = None) -> dict | None:
     meta_path = latest_frame_meta_path(frames_dir)
     if not meta_path.is_file():

@@ -310,22 +310,33 @@ async def queue_command(request):  # type: ignore[no-untyped-def]
         state = env.get_state()
         did_reset = True
 
-    for _ in range(steps):
-        if state.get("done"):
-            break
-        plan = oracle_plan(state)
-        state = env.step(plan)
-        _save_live_frame("command")
-        _emit_live_telemetry(state, plan)
-        executed.append(
-            {
-                "step": state.get("step"),
-                "action": "; ".join(
-                    f"r{c.id} {c.action} {c.target}" for c in plan.robots
-                ),
-                "events": state.get("events", []),
-            }
-        )
+    # Operator-triggered run: animate the in-between motion to latest.png so the
+    # live dashboard shows smooth arms. Scoped to this loop so the latency-critical
+    # NemoClaw step_cell path keeps one-frame-per-step (real wall-clock cadence).
+    smoothing = hasattr(env, "enable_live_smoothing")
+    if smoothing:
+        env.enable_live_smoothing(frames_per_step=6)  # type: ignore[attr-defined]
+
+    try:
+        for _ in range(steps):
+            if state.get("done"):
+                break
+            plan = oracle_plan(state)
+            state = env.step(plan)
+            _save_live_frame("command")
+            _emit_live_telemetry(state, plan)
+            executed.append(
+                {
+                    "step": state.get("step"),
+                    "action": "; ".join(
+                        f"r{c.id} {c.action} {c.target}" for c in plan.robots
+                    ),
+                    "events": state.get("events", []),
+                }
+            )
+    finally:
+        if smoothing:
+            env.disable_live_smoothing()  # type: ignore[attr-defined]
 
     return JSONResponse(
         {

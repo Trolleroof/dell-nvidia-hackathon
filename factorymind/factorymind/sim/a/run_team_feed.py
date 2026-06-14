@@ -133,6 +133,10 @@ def run_feed(
 
     if stream:
         print(f"Streaming telemetry -> {live_path} (Ctrl+C to stop early)")
+        # Live dashboard polls latest.png ~10 Hz — render the in-between motion so
+        # the arms animate smoothly instead of jumping once per step.
+        if hasattr(env, "enable_live_smoothing"):
+            env.enable_live_smoothing(frames_per_step=6)  # type: ignore[attr-defined]
 
     for _ in range(max_steps):
         state = env.get_state()

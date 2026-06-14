@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 import mujoco
 import numpy as np
@@ -21,7 +21,7 @@ from factorymind.sim.a.conveyor import (
     part_at_pick_zone,
 )
 from factorymind.sim.a.pose_lookup import ARM_JOINT_NAMES, apply_arm_qpos, read_arm_qpos
-from factorymind.sim.a.frame_export import publish_latest_frame
+from factorymind.sim.a.frame_export import publish_latest_frame, publish_latest_rgb
 from factorymind.sim.a.render import CellRenderer, DASHBOARD_HEIGHT, DASHBOARD_WIDTH, default_frames_dir
 from factorymind.sim.a.part_catalog import TASK_BY_SCENARIO, is_task_done
 from factorymind.sim.a.state import CellState, PartState, RobotState, StationState
@@ -77,6 +77,9 @@ class MujocoCellEnv:
         self._interp_remaining = 0
         self._renderer: CellRenderer | None = None
         self._frames_dir = default_frames_dir()
+        # Optional hook called after every physics substep. Used by the live
+        # viewer to render the in-between motion instead of one frame per step.
+        self._on_substep: Callable[[], None] | None = None
         self.reset(seed)
 
     def reset(self, seed: int | None = None) -> dict[str, Any]:
@@ -178,6 +181,63 @@ class MujocoCellEnv:
             frames_dir=self._frames_dir,
         )
         return saved
+
+    def publish_live_frame(self) -> None:
+        """Render the current state straight to frames/latest.png (no per-step PNG).
+
+        Cheaper than save_frame() for the live dashboard poll target — used by the
+        substep smoothing hook, which fires many times per step.
+        """
+        if self._renderer is None:
+            self._renderer = CellRenderer(self._model)
+        rgb = self._renderer.render_rgb(self._data)
+        publish_latest_rgb(
+            rgb,
+            step=self._step,
+            width=DASHBOARD_WIDTH,
+            height=DASHBOARD_HEIGHT,
+            frames_dir=self._frames_dir,
+        )
+
+    def enable_live_smoothing(
+        self, frames_per_step: int = 6, min_frame_dt: float = 0.05
+    ) -> None:
+        """Animate the in-between motion to frames/latest.png so live dashboards
+        (which poll latest.png ~10 Hz) show smooth arms instead of one jump per step.
+
+        frames_per_step: latest.png refreshes per motion step. Capped on purpose —
+                         a 720p offscreen render is ~100 ms on CPU, so rendering
+                         every substep (80×) would stall the loop for seconds.
+        min_frame_dt:    minimum wall-clock between published frames. On fast (GPU)
+                         hardware this paces playback to real-ish time; on slow CPU
+                         render time already exceeds it and no extra sleep happens.
+
+        Do NOT enable on the latency-critical NemoClaw step path — the added render
+        time would inflate the measured tool-call cadence on the dashboard.
+        """
+        import time
+
+        every = max(1, INTERP_STEPS // max(1, frames_per_step))
+        clock = {"i": 0, "last": None}
+
+        def hook() -> None:
+            clock["i"] += 1
+            if clock["i"] % every != 0:
+                return
+            if min_frame_dt > 0 and clock["last"] is not None:
+                delay = min_frame_dt - (time.perf_counter() - clock["last"])
+                if delay > 0:
+                    time.sleep(delay)
+            try:
+                self.publish_live_frame()
+            except Exception:
+                pass
+            clock["last"] = time.perf_counter()
+
+        self._on_substep = hook
+
+    def disable_live_smoothing(self) -> None:
+        self._on_substep = None
 
     def step(self, plan: CellPlan) -> dict[str, Any]:
         self._events = []
@@ -300,6 +360,8 @@ class MujocoCellEnv:
             mujoco.mj_step(self._model, self._data)
             self._sync_gripped_parts()
             self._advance_conveyor_belt()
+            if self._on_substep is not None:
+                self._on_substep()
 
     def _advance_conveyor_on_body(self, body_id: str, wrap_offset: float, base_y: float, base_z: float) -> None:
         bid = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_BODY, body_id)

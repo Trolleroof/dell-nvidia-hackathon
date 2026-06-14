@@ -46,6 +46,26 @@ def main() -> None:
         viewer.cam.distance = 1.8
         viewer.cam.lookat[:] = [0.45, 0.0, 0.45]
 
+        # Render every physics substep at (roughly) real time so the arm
+        # animates smoothly instead of jumping once per high-level step.
+        sim_dt = float(env.model.opt.timestep)
+        next_frame = time.perf_counter()
+
+        def on_substep() -> None:
+            nonlocal next_frame
+            if not viewer.is_running():
+                return
+            viewer.sync()
+            next_frame += sim_dt
+            delay = next_frame - time.perf_counter()
+            if delay > 0:
+                time.sleep(delay)
+            else:
+                # Fell behind real time — resync the clock to avoid runaway drift.
+                next_frame = time.perf_counter()
+
+        env._on_substep = on_substep
+
         # Show initial state
         viewer.sync()
         time.sleep(0.8)
@@ -59,10 +79,10 @@ def main() -> None:
                 time.sleep(2.0)
                 break
             plan = oracle_plan(state)
+            next_frame = time.perf_counter()
             env.step(plan)
-            viewer.sync()
-            time.sleep(0.35)
 
+        env._on_substep = None
         while viewer.is_running():
             viewer.sync()
             time.sleep(0.05)
