@@ -28,11 +28,17 @@ export function CellView({
   step,
   resetKey,
   frameBase = SIM_FRAME_BASE,
+  preferMujocoFrame = false,
+  liveMujocoFrame = false,
+  animatedFallback = false,
 }: {
   latest?: TelemetryRow;
   step: number;
   resetKey: number;
   frameBase?: string;
+  preferMujocoFrame?: boolean;
+  liveMujocoFrame?: boolean;
+  animatedFallback?: boolean;
 }) {
   const [arms, setArms] = useState<Arm[]>([
     { x: 150, base: 250, angle: -0.5, grip: false },
@@ -44,6 +50,16 @@ export function CellView({
     { id: "part_2", x: 260, y: 235, placed: false, c: "#38b6ff" },
     { id: "part_3", x: 320, y: 232, placed: false, c: "#76b900" },
   ]);
+  const [frameRefresh, setFrameRefresh] = useState(0);
+  const [mockTick, setMockTick] = useState(0);
+  const effectiveStep = latest ? step : mockTick;
+  const replayStep = String(effectiveStep % 13).padStart(4, "0");
+  const framePath = liveMujocoFrame
+    ? "/sim/latest.png"
+    : latest?.frame_url ?? (preferMujocoFrame ? `/sim/replay/step_${replayStep}.png` : undefined);
+  const frameSrc = framePath ? `${frameBase}${framePath}?step=${effectiveStep}&refresh=${frameRefresh}` : undefined;
+  const [failedFrameSrc, setFailedFrameSrc] = useState<string | null>(null);
+  const showFrame = Boolean(frameSrc && failedFrameSrc !== frameSrc);
 
   // reset on resetKey change
   useEffect(() => {
@@ -55,14 +71,37 @@ export function CellView({
     ]);
   }, [resetKey]);
 
-  // react to each new decision
   useEffect(() => {
-    if (!latest) return;
-    setArms((prev) => prev.map((a) => ({ ...a, angle: -0.8 + Math.random() * 1.6, grip: Math.random() < 0.5 })));
-    if (Math.random() < 0.22) {
+    if (!liveMujocoFrame) return;
+    const id = window.setInterval(() => setFrameRefresh((n) => n + 1), 500);
+    return () => window.clearInterval(id);
+  }, [liveMujocoFrame]);
+
+  useEffect(() => {
+    if (!animatedFallback || latest) return;
+    const id = window.setInterval(() => setMockTick((n) => n + 1), 650);
+    return () => window.clearInterval(id);
+  }, [animatedFallback, latest]);
+
+  // react to each new decision, or animate locally when no backend feed is attached
+  useEffect(() => {
+    if (!latest && !animatedFallback) return;
+    const phase = effectiveStep * 0.42;
+    setArms([
+      { x: 150, base: 250, angle: -0.65 + Math.sin(phase) * 0.75, grip: effectiveStep % 4 > 1 },
+      { x: 370, base: 250, angle: 0.55 + Math.cos(phase * 0.9) * 0.8, grip: effectiveStep % 5 > 2 },
+    ]);
+    if (effectiveStep > 0 && effectiveStep % 3 === 0) {
       setParts((prev) => {
         const idx = prev.findIndex((p) => !p.placed);
-        if (idx < 0) return prev;
+        if (idx < 0) {
+          placedRef.current = 0;
+          return [
+            { id: "part_1", x: 200, y: 230, placed: false, c: "#ffb02e" },
+            { id: "part_2", x: 260, y: 235, placed: false, c: "#38b6ff" },
+            { id: "part_3", x: 320, y: 232, placed: false, c: "#76b900" },
+          ];
+        }
         const n = [...prev];
         n[idx] = { ...n[idx], placed: true, x: 430 + placedRef.current * 12, y: 90 + placedRef.current * 30 };
         placedRef.current += 1;
@@ -70,18 +109,28 @@ export function CellView({
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
+  }, [effectiveStep, animatedFallback, latest]);
 
   return (
     <div className="card">
-      <h2 className="card-title"><span className="tick" />Assembly Cell · 2 Arms</h2>
-      {latest?.frame_url ? (
-        <img
-          src={`${frameBase}${latest.frame_url}`}
-          alt={`Sim frame step ${step}`}
-          className="w-full h-[300px] rounded-xl object-cover border border-line bg-[#05080c]"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-        />
+      <h2 className="card-title">
+        <span className="tick" />
+        Assembly Cell · 2 Arms
+        {showFrame && <span className="ml-auto pill text-nvidia bg-[rgba(118,185,0,.12)]">MuJoCo</span>}
+        {!showFrame && animatedFallback && <span className="ml-auto pill text-dell-bright bg-[rgba(10,143,220,.14)]">Mock live</span>}
+      </h2>
+      {showFrame && frameSrc ? (
+        <div className="relative">
+          <img
+            src={frameSrc}
+            alt={`MuJoCo sim frame step ${effectiveStep}`}
+            className="w-full h-[300px] rounded-xl object-cover border border-line bg-[#05080c]"
+            onError={() => setFailedFrameSrc(frameSrc)}
+          />
+          <div className="absolute left-3 top-3 rounded-full border border-[rgba(118,185,0,.45)] bg-black/60 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[1px] text-nvidia-bright">
+            {liveMujocoFrame ? "Live MuJoCo" : "MuJoCo frame"}
+          </div>
+        </div>
       ) : (
       <svg
         viewBox="0 0 520 300"
@@ -123,9 +172,9 @@ export function CellView({
       </svg>
       )}
       <div className="flex gap-3.5 flex-wrap mt-3 text-xs text-dim">
-        <span>Step <b className="text-text">{step}</b></span>
-        <span>Event <b className="text-text">{latest?.sim_event ?? "—"}</b></span>
-        <span>Parts placed <b className="text-text">{placedRef.current} / 3</b></span>
+        <span>Step <b className="text-text">{effectiveStep}</b></span>
+        <span>Event <b className="text-text">{latest?.sim_event ?? (animatedFallback ? "mock_cycle" : "—")}</b></span>
+        <span>Parts placed <b className="text-text">{Math.min(placedRef.current, 3)} / 3</b></span>
       </div>
     </div>
   );
