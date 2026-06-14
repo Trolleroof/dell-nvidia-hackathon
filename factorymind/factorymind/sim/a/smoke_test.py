@@ -15,6 +15,20 @@ def _run_mock() -> None:
     placed = sum(1 for p in final["parts"] if p["at"] == "station_1")
     print(f"OK [mock] — {final['step']} steps, {placed} parts at station_1")
 
+    env_green = MockCellEnv(num_robots=2, seed=0, scenario="sort_green")
+    final_green = run_oracle_episode(env_green)
+    assert final_green["done"], f"Mock sort_green failed: {final_green}"
+    green_placed = sum(
+        1 for p in final_green["parts"] if p["color"] == "green" and p["at"] == "station_1"
+    )
+    print(f"OK [mock sort_green] — {final_green['step']} steps, {green_placed} green at station_1")
+
+    env_mis = MockCellEnv(num_robots=2, seed=0, scenario="misaligned")
+    final_mis = run_oracle_episode(env_mis)
+    assert final_mis["done"], f"Mock misaligned failed: {final_mis}"
+    placed_mis = sum(1 for p in final_mis["parts"] if p["at"] == "station_1")
+    print(f"OK [mock misaligned] — {final_mis['step']} steps, {placed_mis} parts at station_1")
+
 
 def _run_mujoco() -> None:
     os.environ["FACTORYMIND_SIM_BACKEND"] = "mujoco"
@@ -23,6 +37,22 @@ def _run_mujoco() -> None:
     assert final["done"], f"MuJoCo oracle failed: {final}"
     placed = sum(1 for p in final["parts"] if p["at"] == "station_1")
     print(f"OK [mujoco] — {final['step']} steps, {placed} parts at station_1")
+
+    from factorymind.sim.a.config import SimConfig
+
+    env_green = create_cell_env(SimConfig(backend="mujoco", scenario="sort_green", default_seed=0))
+    final_green = run_oracle_episode(env_green)
+    assert final_green["done"], f"MuJoCo sort_green failed: {final_green}"
+    green_placed = sum(
+        1 for p in final_green["parts"] if p["color"] == "green" and p["at"] == "station_1"
+    )
+    print(f"OK [mujoco sort_green] — {final_green['step']} steps, {green_placed} green at station_1")
+
+    env_mis = create_cell_env(SimConfig(backend="mujoco", scenario="misaligned", default_seed=0))
+    final_mis = run_oracle_episode(env_mis)
+    assert final_mis["done"], f"MuJoCo misaligned failed: {final_mis}"
+    placed_mis = sum(1 for p in final_mis["parts"] if p["at"] == "station_1")
+    print(f"OK [mujoco misaligned] — {final_mis['step']} steps, {placed_mis} parts at station_1")
 
 
 def main() -> None:

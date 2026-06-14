@@ -15,11 +15,12 @@ from mcp.server.fastmcp import FastMCP
 
 from factorymind.agent.schemas import CellPlan
 from dataclasses import replace
+from factorymind.sim.a.config import get_config
 from factorymind.sim.a.env_factory import get_cell_env, reset_cell_env
 from factorymind.sim.a.frame_export import latest_frame_path, read_latest_frame_meta
 from factorymind.sim.a.targets import TARGET_POSES
 
-Scenario = Literal["default", "misaligned", "empty_bin"]
+Scenario = Literal["default", "sort_green", "misaligned", "empty_bin"]
 
 mcp = FastMCP(
     "FactoryMind Sim",
@@ -35,7 +36,7 @@ mcp = FastMCP(
 
 @mcp.tool()
 def reset_cell(seed: int = 0, scenario: Scenario = "default") -> dict[str, Any]:
-    """Reset the cell. scenario: default | misaligned | empty_bin."""
+    """Reset the cell. scenario: default | sort_green | misaligned | empty_bin."""
     cfg = replace(get_config(), scenario=scenario, default_seed=seed)
     cell = reset_cell_env(cfg)
     return cell.reset(seed)

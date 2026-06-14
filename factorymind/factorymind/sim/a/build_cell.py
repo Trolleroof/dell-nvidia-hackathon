@@ -9,6 +9,8 @@ from pathlib import Path
 
 import mujoco
 
+from factorymind.sim.a.part_catalog import rgba_for_part
+
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 PANDA_XML = ASSETS_DIR / "menagerie" / "panda.xml"
 CELL_XML = ASSETS_DIR / "cell.xml"
@@ -111,7 +113,7 @@ def build_cell_spec() -> mujoco.MjSpec:
             type=mujoco.mjtGeom.mjGEOM_BOX,
             size=[0.015, 0.015, 0.015],
             mass=0.05,
-            rgba=[0.9, 0.85, 0.2, 1],
+            rgba=rgba_for_part(part_id),
         )
         body.add_site(name=f"{part_id}_tip", pos=[0, 0, 0], size=[0.012])
 

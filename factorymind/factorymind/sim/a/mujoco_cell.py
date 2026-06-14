@@ -14,10 +14,11 @@ from factorymind.sim.a.build_cell import PART_DEFAULTS
 from factorymind.sim.a.pose_lookup import ARM_JOINT_NAMES, apply_arm_qpos, read_arm_qpos
 from factorymind.sim.a.frame_export import publish_latest_frame
 from factorymind.sim.a.render import CellRenderer, DASHBOARD_HEIGHT, DASHBOARD_WIDTH, default_frames_dir
+from factorymind.sim.a.part_catalog import TASK_BY_SCENARIO, is_task_done
 from factorymind.sim.a.state import CellState, PartState, RobotState, StationState
 from factorymind.sim.a.targets import TARGET_POSES, TARGET_QPOS, TARGET_QPOS_ARM1
 
-Scenario = Literal["default", "misaligned", "empty_bin"]
+Scenario = Literal["default", "sort_green", "misaligned", "empty_bin"]
 
 INTERP_STEPS = 80
 INTERP_ALPHA = 0.12
@@ -113,7 +114,7 @@ class MujocoCellEnv:
             if part_id not in self._part_at:
                 continue
             pos = self._part_position(part_id)
-            parts.append(PartState(id=part_id, pos=pos, at=self._part_at[part_id]))
+            parts.append(PartState.from_id(part_id, pos, self._part_at[part_id]))
         stations = [
             StationState(id=sid, status=self._station_status[sid])  # type: ignore[arg-type]
             for sid in ("station_1", "station_2")
@@ -125,6 +126,8 @@ class MujocoCellEnv:
             stations=stations,
             events=list(self._events),
             done=self._done,
+            task=TASK_BY_SCENARIO.get(self.scenario, TASK_BY_SCENARIO["default"]),
+            scenario=self.scenario,
         ).to_dict()
 
     def list_targets(self) -> list[str]:
@@ -175,8 +178,11 @@ class MujocoCellEnv:
         self._simulate_motion_and_physics()
         self._check_collisions()
 
-        placed = sum(1 for at in self._part_at.values() if at == "station_1")
-        if placed >= 3:
+        parts = [
+            {"id": pid, "at": at, "color": PartState.from_id(pid, [0, 0, 0], at).color}
+            for pid, at in self._part_at.items()
+        ]
+        if is_task_done(parts, TASK_BY_SCENARIO.get(self.scenario, ""), self.scenario):
             self._done = True
             if "task_complete" not in self._events:
                 self._events.append("task_complete")

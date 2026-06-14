@@ -46,3 +46,26 @@ export function parseJSONL(text: string): TelemetryRow[] {
     .filter((r): r is TelemetryRow => r != null)
     .map(withTokS);
 }
+
+/** Merge two isolated per-model runs (same steps/actions) for side-by-side replay. */
+export function mergeIsolatedRuns(
+  diffusionRows: TelemetryRow[],
+  arRows: TelemetryRow[],
+): TelemetryRow[] {
+  const dByStep = new Map(diffusionRows.map((r) => [r.step, r]));
+  const aByStep = new Map(arRows.map((r) => [r.step, r]));
+  const steps = [...new Set([...dByStep.keys(), ...aByStep.keys()])].sort((x, y) => x - y);
+  const out: TelemetryRow[] = [];
+  for (const s of steps) {
+    const d = dByStep.get(s);
+    const a = aByStep.get(s);
+    if (d) out.push(d);
+    if (a) out.push(a);
+  }
+  return out;
+}
+
+export const ISOLATED_REPLAY_PATHS = {
+  diffusion: "../../telemetry/diffusion_run.jsonl",
+  ar: "../../telemetry/ar_run.jsonl",
+} as const;

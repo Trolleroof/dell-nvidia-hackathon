@@ -22,9 +22,13 @@ python -m factorymind.sim.a.smoke_test
 | `python -m factorymind.sim.a.render_frame` | single PNG |
 | `python -m factorymind.sim.a.run_all` | **Everything** — checks + replay + live 3D window |
 | `python -m factorymind.sim.a.run_live_demo` | Live oracle in MuJoCo viewer only |
+| `python -m factorymind.sim.a.run_team_feed` | isolated `diffusion_run.jsonl` + `ar_run.jsonl` + frames |
+| `python -m factorymind.sim.a.run_team_feed --scenario sort_green` | green-box sorting demo |
+| `python -m factorymind.sim.a.serve_team_feed` | HTTP serve telemetry + frames (:8766) |
 | `python -m factorymind.sim.a.mcp_server` | MCP for Cursor |
 
-MuJoCo: `export FACTORYMIND_SIM_BACKEND=mujoco`
+MuJoCo: `export FACTORYMIND_SIM_BACKEND=mujoco`  
+Scenarios: `export FACTORYMIND_SIM_SCENARIO=default|sort_green|misaligned|empty_bin`
 
 ## Planning Scope
 

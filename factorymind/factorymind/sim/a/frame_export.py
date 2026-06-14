@@ -21,6 +21,10 @@ def latest_frame_meta_path(frames_dir: Path | None = None) -> Path:
     return (frames_dir or default_frames_dir()) / LATEST_JSON
 
 
+def replay_frame_url(step: int, prefix: str = "/sim/replay") -> str:
+    return f"{prefix}/step_{step:04d}.png"
+
+
 def publish_latest_frame(
     source: Path,
     *,

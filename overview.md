@@ -25,9 +25,9 @@
 
 ## 2. Main Goal
 
-Ship a working **always-on, fully-local multi-robot controller** and prove the thesis on stage: a live, side-by-side **diffusion-vs-autoregressive latency dashboard** where the diffusion-driven cell keeps moving while the AR baseline lags — running entirely on the GB10, with nothing going to the cloud.
+Ship a working **always-on, fully-local multi-robot controller** and prove the thesis on stage: a **diffusion-vs-autoregressive latency dashboard** where each model is measured **in isolation** on the GB10, then **replayed side-by-side** so judges see diffusion finish each action block faster than AR — with nothing going to the cloud.
 
-The win condition for the judges (Dell + NVIDIA executives) is a demo that shows **why this specific local box matters** — on-prem data, low latency, and a capability the cloud structurally can't match.
+The win condition for the judges (Dell + NVIDIA executives) is a demo that shows **why this specific local box matters** — on-prem data, low latency, and a capability the cloud structurally can't match. This is a **relative** race (diffusion faster than AR on the same task), not a claim of absolute real-time control — expect roughly **1–2 decisions/sec** on a bandwidth-limited GB10, not 30 Hz.
 
 > **North-star ship order:** (1) sim + NemoClaw loop with a mock endpoint on a laptop → (2) same loop on the box with AR Gemma 4 → (3) latency dashboard → (4) DiffusionGemma hero path *if* 1–3 are green → (5) Phase 2 VLA/video perception only if everything else is already working. There is always a working demo at each step.
 
@@ -38,8 +38,8 @@ The win condition for the judges (Dell + NVIDIA executives) is a demo that shows
 | Role | Owner of | In one line |
 |---|---|---|
 | **A — Simulation** | The cell | MuJoCo: 2 arms, one pick-and-place task, exposes `get_state()` / `step()` as NemoClaw tools and a deterministic oracle policy. |
-| **B — Agent** | Tools + schema | Defines the NemoClaw tool set (`get_state`, `step`, `hold_position`) that NemoClaw calls, owns the action schema (C1), and extracts telemetry (C5) from NemoClaw agent logs. |
-| **C — Frontend** | The proof | The local diffusion-vs-AR latency dashboard plus the cell visualization — NemoClaw's control UI (`:8080`) is embedded or linked within the dashboard. |
+| **B — Agent** | Control loop + schema | Owns the Python control loop (`get_state` → plan → `step`), action schema (C1), telemetry (C5), and tool server; records isolated per-model runs for replay. |
+| **C — Frontend** | The proof | Diffusion-vs-AR dashboard via **replay of two isolated runs** side-by-side; wall-clock per action block as headline; optional NemoClaw UI embed. |
 | **D — Models & Box** | Inference + hardware | Weights on SSD, local OpenAI-compatible serving, NemoClaw bring-up, install scripts, and the GB10 first-hour gate. |
 
 Full responsibilities, workflows, and failure handling for each are in [`FactoryMind_Team_Roles.md`](FactoryMind_Team_Roles.md) (see §6 for direct links).
@@ -54,41 +54,50 @@ Everything composes through **five frozen contracts** (defined in full in the ro
 - **C2 — Sim-state schema**: what `get_state()` returns; exposed as the `get_state` NemoClaw tool payload. Phase 1 includes ground-truth object attributes such as id, color, position, and location so text tasks like "sort green boxes" do not require camera perception. *A owns.*
 - **C3 — NemoClaw tool definitions**: the three tools NemoClaw calls (`get_state`, `step`, `hold_position`), their JSON schemas, and the tool server port. *B owns; configured only through NemoClaw profiles.*
 - **C4 — Endpoint contract**: `base_url`, model name, structured-output support, `max_model_len`. *D owns, hands to B (and NemoClaw config).*
-- **C5 — Telemetry JSONL**: one line per control step, extracted from NemoClaw agent logs; the dashboard's only data source. *B owns, C consumes.*
+- **C5 — Telemetry JSONL**: one line per control step; **one full run per model** for replay. Headline field: `latency_ms` (wall-clock per valid action block). *B owns, C consumes.*
 
 ```
    A (Sim) ◀──────────────────────────────────────────────────────────────┐
-   tools: get_state / step / hold_position (C3, served by B)              │
+   get_state / step / hold_position (C3, served by B)                     │
         │                                                                  │
         ▼                                                                  │
-   NemoClaw agent (harness) ──prompt──▶ D (Models): :8000 / :8001
-        │  text task + structured state; tool calls      diffusion / AR
-        │ C5 telemetry JSONL (extracted from NemoClaw logs)
+   B control loop (Python) ──one model at a time──▶ D (Models)
+        │  text task + C2 state; validate CellPlan     :8000 *or* :8001
+        │  (not concurrent — same GPU contends)          diffusion *or* AR
+        │ C5 telemetry JSONL (one run per model)
         ▼
-   C (Frontend): latency dashboard + NemoClaw control UI (:8080)
-        browser on the box — no cloud, no SSH X-forwarding
-   D (Box) ── C4 endpoints ─▶ NemoClaw config     D ── GL/EGL stack ─▶ A
+   C (Frontend): replay two recorded runs side-by-side + optional live single-model feed
+        headline metric: wall-clock ms per valid action block
+   D (Box) ── C4 endpoints ─▶ B config          D ── GL/EGL stack ─▶ A
 ```
 
-The dependency seams, in build order of risk: **A-B** (closeable through the NemoClaw mock profile + smoke test) -> **B-C** (closeable via NemoClaw telemetry replay, no GPU) -> **D-NemoClaw** (the last and riskiest seam, so bring up AR Gemma 4 first to unblock everyone).
+**Latency race rule:** do **not** call DiffusionGemma and AR in parallel on one GB10 — they contend for the same SMs and memory bandwidth, so a live concurrent race measures contention, not architecture. Run the full scenario on diffusion, record C5; run it again on AR at **matched precision**, record C5; let C's **replay mode** play both traces next to each other. Fair, crash-proof, and the dashboard already has the replay path.
+
+**Brief-fit note:** NemoClaw is the on-brief harness target, but the latency-comparison data path is B's plain Python loop hitting model endpoints — not a live dual-NemoClaw race. NemoClaw UI (`:8080`) can still be embedded for the agent story; the measured clocks come from B's isolated runs.
+
+The dependency seams, in build order of risk: **A-B** (closeable through mock endpoint + smoke test) -> **B-C** (closeable via recorded telemetry replay, no GPU) -> **D-B** (the last and riskiest seam — bring up AR Gemma 4 first, one model loaded at a time).
 
 ---
 
 ## 5. End-to-End Workflow
 
-**Runtime control loop (the always-on agent — orchestrated by NemoClaw):**
+**Runtime control loop (B's Python loop — NemoClaw is the on-brief harness target, but this is the measured data path):**
 
-1. **Read** — NemoClaw calls the `get_state` tool (B's tool server) → current cell state (C2) returned as tool result, including object ids/colors/positions for Phase 1 sorting tasks.
-2. **Plan** — NemoClaw prompts the local model (D's endpoint, C4) with the user text task, structured state, and tool schema; model returns a `CellPlan` (C1) as a tool call or structured output.
-3. **Parse + validate** — NemoClaw/B's tool server enforces the schema on `step` invocation; on bad args, the tool returns an error and NemoClaw reprompts once; on a second failure, `hold_position` tool is called instead. The loop never blocks.
-4. **Step** — NemoClaw calls the `step` tool with the validated `CellPlan`; physics advances; events emit (pick success, collision, task complete).
-5. **Log** — B's telemetry extractor reads NemoClaw agent logs and emits one C5 JSONL line per step: latency, TTFT, tokens, parse result, action summary, sim event.
-6. **Render** — C's dashboard reads the telemetry stream and A's frames; NemoClaw's own control UI (`:8080`) is embedded or linked alongside.
-7. **Repeat** — NemoClaw keeps the agent loop running, always-on.
+1. **Read** — B calls `get_state()` on A's sim → current cell state (C2), including object ids/colors/positions for Phase 1 sorting tasks.
+2. **Plan** — B prompts the **single loaded model** (D's endpoint, C4) with the user text task, structured state, and schema; model returns a `CellPlan` (C1).
+3. **Parse + validate** — B enforces the schema; on bad output, reprompt once; on a second failure, `hold_position`. The loop never blocks.
+4. **Step** — B calls A's `step()` with the validated `CellPlan`; physics advances; events emit (pick success, collision, task complete).
+5. **Log** — B emits one C5 JSONL line per step. **Headline field: `latency_ms`** = end-to-end wall-clock to produce one valid action block (the directly comparable metric — also what "keeps the line moving" means). Keep `ttft_ms`, `prompt_tokens`, and `completion_tokens` as secondary color only; they are not apples-to-apples across diffusion vs AR.
+6. **Render** — C reads recorded telemetry and A's frames; optional NemoClaw control UI (`:8080`) embedded alongside.
+7. **Repeat** — B keeps the loop running against whichever model is currently loaded.
 
-For the hero moment, NemoClaw runs two parallel agent sessions over identical state — one pointed at DiffusionGemma (`:8000`), one at AR Gemma 4 (`:8001`) — and the dashboard shows both clocks side by side.
+**Hero moment (isolated measurement + replay, not a live concurrent race):**
 
-**Build-time sequence:** follow the north-star ship order (§2). Laptop-green (NemoClaw mock endpoint + oracle-backed sim + replay all working) **before** first contact with the box.
+1. Load **DiffusionGemma** at matched precision → run the full pick-and-place scenario → write `telemetry/diffusion_run.jsonl`.
+2. Unload diffusion, load **AR Gemma 4** at the **same precision** (both NVFP4 ideal on GB10; both BF16 if NVFP4 AR isn't ready) → same scenario, same seed → write `telemetry/ar_run.jsonl`.
+3. C's dashboard **replays both traces side-by-side** — wall-clock per action block as the headline number, diffusion finishing blocks faster than AR.
+
+**Build-time sequence:** follow the north-star ship order (§2). Laptop-green (mock endpoint + oracle-backed sim + replay all working) **before** first contact with the box.
 
 ---
 
@@ -97,18 +106,19 @@ For the hero moment, NemoClaw runs two parallel agent sessions over identical st
 ```
                     Dell Pro Max with GB10 (128 GB unified, aarch64 / DGX OS)
  ┌───────────────────────────────────────────────────────────────────────────┐
- │  MuJoCo cell (A)      Tool API / C2 state (B)   NemoClaw + Models (D)     │
- │  ┌─────────────┐ tool  ┌──────────────────────────┐  /v1 ┌─────────────┐  │
- │  │ 2 robot arms│◀─────▶│ get_state: objects      │─────▶│DiffusionGemma│ │
- │  │ parts, bins │ calls │ id/color/pos/location   │      │  :8000 NVFP4│  │
- │  │ get_state() │       │ text task + tool schema │◀─────│Gemma 4 AR   │  │
- │  │ step()      │       │ NemoClaw calls tools    │      │  :8001      │  │
- │  └──────┬──────┘       │ step / hold_position    │      └─────────────┘  │
- │         │ frames       └────────────┬───────────────┘                       │
- │         │                          │ C5 telemetry JSONL (from NemoClaw logs)│
- │         ▼                          ▼                                        │
- │  C (Frontend): latency dashboard + NemoClaw control UI (:8080) embedded    │
- │                browser on the box — diffusion vs AR, live                  │
+ │  MuJoCo cell (A)      B control loop + C2 state (B)    Models (D)         │
+ │  ┌─────────────┐      ┌──────────────────────────┐  one at a time:         │
+ │  │ 2 robot arms│◀────▶│ get_state → plan → step │─────▶ :8000 diffusion  │
+ │  │ parts, bins │      │ validate CellPlan (C1)  │  *or* :8001 AR          │
+ │  │ get_state() │      │ Python loop (not dual)  │◀────  matched precision │
+ │  │ step()      │      └────────────┬────────────┘      (NVFP4↔NVFP4 or   │
+ │  └──────┬──────┘                   │ C5 JSONL per run   BF16↔BF16)       │
+ │         │ frames                   ▼                                        │
+ │         │              telemetry/diffusion_run.jsonl                        │
+ │         │              telemetry/ar_run.jsonl                               │
+ │         ▼                          │                                        │
+ │  C (Frontend): replay both runs side-by-side — wall-clock/action headline  │
+ │                ~1–2 decisions/sec; optional NemoClaw UI (:8080) for story  │
  └───────────────────────────────────────────────────────────────────────────┘
               No outbound internet during the demo — that's the point.
 ```
@@ -116,10 +126,10 @@ For the hero moment, NemoClaw runs two parallel agent sessions over identical st
 **Stack by layer:**
 
 - **Simulation (A):** MuJoCo (`mujoco` Python bindings, MJCF scenes, offscreen/EGL rendering), NumPy. Phase 1 exposes ground-truth object state, including color labels for sorting tasks; fallback engine: PyBullet.
-- **Agent harness (NemoClaw):** NemoClaw calls B's tool server to drive the sim. No custom Python control loop — NemoClaw *is* the loop.
-- **Tool server (B):** Python + FastAPI + Pydantic v2. Exposes three tools: `get_state` → C2 state, `step(CellPlan)` → sim advance, `hold_position` → no-op safety. Also runs a telemetry extractor that tails NemoClaw logs → C5 JSONL.
-- **Frontend (C):** React/TypeScript + Vite + Tailwind + charting lib for the polished build; static-HTML + vanilla-JS fallback. Embeds or iframes NemoClaw's control UI (`:8080`). SSE/websocket or JSONL tailing for live telemetry.
-- **Models & serving (D):** DiffusionGemma `nvidia/diffusiongemma-26B-A4B-it-NVFP4` (~18 GB) + `google/gemma-4-26B-A4B-it` (AR baseline). Serving ladder: **NVIDIA NIM → vLLM `vllm/vllm-openai:gemma4` image → HF Transformers + NVFP4 behind a FastAPI shim** (the floor). Docker + NVIDIA Container Toolkit.
+- **Agent harness (NemoClaw — on-brief target):** NemoClaw is the required-stack story for judges; the **measured latency path** is B's Python control loop calling model endpoints directly. NemoClaw can still be shown via `:8080` embed, but do not route the latency race through dual live NemoClaw sessions.
+- **Control loop + tool server (B):** Python + FastAPI + Pydantic v2. Owns the control loop: `get_state` → C2, `step(CellPlan)` → sim advance, `hold_position` → safety. Records C5 JSONL with **wall-clock `latency_ms` per valid action block** as the headline metric.
+- **Frontend (C):** React/TypeScript + Vite + Tailwind + charting lib for the polished build; static-HTML + vanilla-JS fallback. **Replay mode is the hero path** for the diffusion-vs-AR comparison — plays two isolated recorded runs side-by-side. Optional live single-model feed; optional NemoClaw UI iframe.
+- **Models & serving (D):** DiffusionGemma `nvidia/diffusiongemma-26B-A4B-it-NVFP4` (~18 GB) + `google/gemma-4-26B-A4B-it` (AR baseline). **Load one model at a time** — NVFP4 diffusion (~18 GB) + BF16 AR (~52 GB) plus KV cache, sim, rendering, and Docker on 128 GB unified is tight, not roomy. **Match precision** for a fair race: both NVFP4 (ideal on Blackwell) or both BF16; never NVFP4 diffusion vs BF16 AR without disclosing the gap out loud. Serving ladder: **NVIDIA NIM → vLLM `vllm/vllm-openai:gemma4` image → HF Transformers + NVFP4 behind a FastAPI shim** (the floor). Docker + NVIDIA Container Toolkit.
 - **Staging status (June 14, 2026):** DiffusionGemma and Gemma 4 AR weight directories are already present on local disk under `/home/dell/factorymind/models/` and mirrored on the SSD under `/media/dell/T9/factorymind/models/`.
 - **Hardware / OS:** GB10 (Grace Blackwell, 128 GB unified memory), aarch64 / DGX OS (Ubuntu-based).
 - **Required-stack layer (on-brief):** NemoClaw — **the central agent harness, not optional**.
@@ -129,13 +139,17 @@ For the hero moment, NemoClaw runs two parallel agent sessions over identical st
 ## 7. Key Decisions and Assumptions
 
 **Decisions:**
-- **NemoClaw is the agent harness** — not a bolt-on. The custom Python control loop is gone; NemoClaw calls B's tool server. This makes the required stack *central*, not optional, and directly answers the brief.
+- **Isolated measurement + replay, not a live concurrent race.** One model loaded at a time on the GB10; run the full scenario per model; C replays both C5 traces side-by-side. Parallel GPU calls would measure contention, not architecture.
+- **Matched precision for a fair comparison.** Blackwell has hardware FP4, so NVFP4 DiffusionGemma vs BF16 AR exaggerates the win (a chunk of speedup is quantization, not diffusion). Race both at NVFP4, or both at BF16, or disclose the precision gap explicitly on stage.
+- **Wall-clock per valid action block is the headline metric.** `latency_ms` = time from state-in to parsed `CellPlan` out. TTFT and tokens/sec are secondary — they mean different things for block-diffusion (whole 256-token canvas in a few denoising passes) vs autoregressive token streaming.
+- **One model at a time for memory.** 128 GB unified is enough, but not roomy with two large models + KV cache + sim + Docker. Sequential loading sidesteps OOM and makes the isolated-measurement story natural.
+- **Relative race, not real-time.** The GB10 is bandwidth-limited (~20 tok/s territory on large models). Expect ~1–2 control decisions/sec on a slow pick-and-place — honest framing, not 30 Hz.
+- **NemoClaw is the on-brief harness target,** but B's plain Python loop is the measured data path for the latency comparison. NemoClaw UI can still be embedded for the agent story.
 - **DiffusionGemma is the hero planner because it fits the hardware thesis,** not because it is a proven VLA yet. Phase 1 uses text + structured state; Phase 2 can test image/video only after the core endpoint is green. We pitch *"parallel generation for parallel control, fully local,"* never *"diffusion is fundamentally better."*
-- **AR Gemma 4 is the primary fallback — the plan, not a panic button.** Same NemoClaw loop, same cell; we lose the diffusion speed story, not the project.
-- **NVFP4 weights, not BF16** — smaller footprint, NVIDIA-optimized, matches the "~18 GB" framing.
-- **Action blocks are deliberately long** (cell plan + per-robot reasoning) so diffusion's parallelism actually wins; diffusion has *higher* time-to-first-token so short outputs don't favour it.
-- **Hard schema enforced at the tool boundary** — `step()` rejects bad `CellPlan`; NemoClaw reprompts once; then `hold_position` fires. The loop never blocks.
-- **Three safety nets:** A's deterministic oracle policy, B's NemoClaw mock endpoint, C's replay mode — each still routes through NemoClaw for the demo.
+- **AR Gemma 4 is the primary fallback — the plan, not a panic button.** Same loop, same cell; we lose the diffusion speed story, not the project.
+- **Action blocks are deliberately long** (cell plan + per-robot reasoning) so diffusion's parallelism actually wins on wall-clock; short outputs don't favour diffusion.
+- **Hard schema enforced at the tool boundary** — `step()` rejects bad `CellPlan`; reprompt once; then `hold_position`. The loop never blocks.
+- **Three safety nets:** A's deterministic oracle policy, B's mock endpoint, C's replay mode.
 - **No benchmark numbers we didn't measure on the box that day.**
 
 **Assumptions (verify on the day):**
@@ -152,8 +166,8 @@ For the hero moment, NemoClaw runs two parallel agent sessions over identical st
 - 2 robot arms, **one** assembly task, a single cell.
 - **NemoClaw as the agent harness** — the required stack is the demo, not a checkbox.
 - Local inference only; hard schema enforced at the tool boundary (`step` rejects bad `CellPlan`).
-- Live diffusion-vs-AR latency dashboard with NemoClaw control UI embedded.
-- Oracle-backed NemoClaw mock endpoint / replay fallbacks for a guaranteed demo.
+- Diffusion-vs-AR latency dashboard via **isolated runs replayed side-by-side** (wall-clock per action block headline); optional NemoClaw control UI embedded.
+- Oracle-backed mock endpoint / recorded-telemetry replay fallbacks for a guaranteed demo.
 
 **Future improvements (post-hackathon):**
 - More arms and tasks; a real multi-station line.

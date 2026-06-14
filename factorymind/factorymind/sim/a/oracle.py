@@ -1,15 +1,37 @@
 """Deterministic oracle policy — completes the pick-and-place without an LLM."""
 
+from __future__ import annotations
+
 from factorymind.agent.schemas import CellPlan, RobotCommand
-from factorymind.sim.a.cell import CellEnv, MockCellEnv
+from factorymind.sim.a.cell import CellEnv
+from factorymind.sim.a.part_catalog import parts_for_task
+from factorymind.sim.a.targets import TARGET_POSES
+
+
+def _hold_r1() -> RobotCommand:
+    return RobotCommand(id=1, action="hold", target="home", reason="Stand clear of robot 0's work zone.")
+
+
+def _approach_target(part_id: str, scenario: str, events: list[str]) -> str:
+    """Misaligned parts (or a missed grip) need per-part approach, not bin center."""
+    if scenario == "misaligned" or "grip_miss" in events:
+        return part_id
+    return "bin_a"
+
+
+def _expected_pose(target: str) -> str:
+    return TARGET_POSES.get(target, f"above_{target}")
 
 
 def oracle_plan(state: dict) -> CellPlan:
-    """Return the next correct CellPlan for the mock pick-and-place task."""
+    """Return the next correct CellPlan for the pick-and-place task."""
     robots = state["robots"]
     parts = state["parts"]
-    pending = [p for p in parts if p["at"] == "bin_a"]
-    in_gripper = [p for p in parts if p["at"].startswith("gripper_")]
+    task = state.get("task", "")
+    scenario = state.get("scenario", "default")
+    events = state.get("events", [])
+    pending = [p for p in parts_for_task(parts, task) if p["at"] == "bin_a"]
+    in_gripper = [p for p in parts_for_task(parts, task) if p["at"].startswith("gripper_")]
 
     r0 = next(r for r in robots if r["id"] == 0)
 
@@ -24,12 +46,7 @@ def oracle_plan(state: dict) -> CellPlan:
                         target="station_1",
                         reason="Deposit the part on the station fixture.",
                     ),
-                    RobotCommand(
-                        id=1,
-                        action="hold",
-                        target="home",
-                        reason="Remain clear of the placement zone.",
-                    ),
+                    _hold_r1(),
                 ],
             )
         return CellPlan(
@@ -41,12 +58,7 @@ def oracle_plan(state: dict) -> CellPlan:
                     target="station_1",
                     reason="Approach the assembly station with the held part.",
                 ),
-                RobotCommand(
-                    id=1,
-                    action="hold",
-                    target="home",
-                    reason="Stand by at home while robot 0 places the part.",
-                ),
+                _hold_r1(),
             ],
         )
 
@@ -60,36 +72,29 @@ def oracle_plan(state: dict) -> CellPlan:
                     target="station_1",
                     reason="Deposit the part on the station fixture.",
                 ),
-                RobotCommand(
-                    id=1,
-                    action="hold",
-                    target="home",
-                    reason="Remain clear of the placement zone.",
-                ),
-            ],
-        )
-
-    if r0["pose"] != "above_bin_a" and pending:
-        return CellPlan(
-            plan="Robot 0 moves above bin_a to begin the next pick cycle.",
-            robots=[
-                RobotCommand(
-                    id=0,
-                    action="move",
-                    target="bin_a",
-                    reason="Position over the source bin for gripping.",
-                ),
-                RobotCommand(
-                    id=1,
-                    action="hold",
-                    target="home",
-                    reason="Idle at home until needed for a second parallel task.",
-                ),
+                _hold_r1(),
             ],
         )
 
     if pending and r0["gripper"] == "open":
         part_id = pending[0]["id"]
+        approach = _approach_target(part_id, scenario, events)
+        approach_pose = _expected_pose(approach)
+
+        if r0["pose"] != approach_pose:
+            reason = (
+                f"Re-align over {part_id} after misalignment — approach the part directly."
+                if scenario == "misaligned" or "grip_miss" in events
+                else f"Position over {approach} before gripping {part_id}."
+            )
+            return CellPlan(
+                plan=f"Robot 0 moves to {approach} to pick {part_id}.",
+                robots=[
+                    RobotCommand(id=0, action="move", target=approach, reason=reason),
+                    _hold_r1(),
+                ],
+            )
+
         return CellPlan(
             plan=f"Robot 0 grips {part_id} from bin_a.",
             robots=[
@@ -97,7 +102,7 @@ def oracle_plan(state: dict) -> CellPlan:
                     id=0,
                     action="grip",
                     target=part_id,
-                    reason=f"Close gripper on {part_id} once aligned over bin_a.",
+                    reason=f"Close gripper on {part_id} once aligned.",
                 ),
                 RobotCommand(
                     id=1,
@@ -118,12 +123,7 @@ def oracle_plan(state: dict) -> CellPlan:
                     target="station_1",
                     reason="Complete placement for part currently in gripper.",
                 ),
-                RobotCommand(
-                    id=1,
-                    action="hold",
-                    target="home",
-                    reason="Hold position while robot 0 completes the place.",
-                ),
+                _hold_r1(),
             ],
         )
 

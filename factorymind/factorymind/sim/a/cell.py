@@ -7,10 +7,9 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from factorymind.agent.schemas import CellPlan, RobotCommand
-from factorymind.sim.a.state import CellState, PartState, RobotState, StationState
+from factorymind.sim.a.part_catalog import TASK_BY_SCENARIO, is_task_done
+from factorymind.sim.a.state import CellState, PartState, RobotState, Scenario, StationState
 from factorymind.sim.a.targets import TARGET_POSES
-
-Scenario = Literal["default", "misaligned", "empty_bin"]
 
 MISALIGNED_OFFSETS = {
     "part_1": (0.06, 0.04, 0.0),
@@ -73,7 +72,7 @@ class MockCellEnv:
                 if self.scenario == "misaligned":
                     dx, dy, dz = MISALIGNED_OFFSETS.get(part_id, (0.0, 0.0, 0.0))
                     pos = [pos[0] + dx, pos[1] + dy, pos[2] + dz]
-                self._parts.append(PartState(id=part_id, pos=pos, at="bin_a"))
+                self._parts.append(PartState.from_id(part_id, pos, "bin_a"))
             if self.scenario == "misaligned":
                 self._events.append("scenario_misaligned")
         self._robots = [
@@ -94,6 +93,8 @@ class MockCellEnv:
             stations=self._stations,
             events=list(self._events),
             done=self._done,
+            task=TASK_BY_SCENARIO.get(self.scenario, TASK_BY_SCENARIO["default"]),
+            scenario=self.scenario,
         ).to_dict()
 
     def list_targets(self) -> list[str]:
@@ -109,8 +110,12 @@ class MockCellEnv:
                 continue
             self._apply_command(cmd)
 
-        placed = sum(1 for p in self._parts if p.at == "station_1")
-        if self._parts and placed >= len(self._parts):
+        task = TASK_BY_SCENARIO.get(self.scenario, TASK_BY_SCENARIO["default"])
+        parts_dict = [
+            {"id": p.id, "at": p.at, "color": p.color}
+            for p in self._parts
+        ]
+        if self._parts and is_task_done(parts_dict, task, self.scenario):
             self._done = True
             if "task_complete" not in self._events:
                 self._events.append("task_complete")

@@ -17,6 +17,7 @@ interface Props {
   hint: string;
   onReset: () => void;
   onLoadReplay: (text: string, name: string) => void;
+  onFetchIsolatedReplay: () => void;
 }
 
 const MODES: { id: Mode; label: string }[] = [
@@ -98,6 +99,7 @@ export function Controls(p: Props) {
         <>
           <input ref={fileRef} type="file" accept=".jsonl,.json,.txt" className="hidden" onChange={onFile} />
           <button className="btn" onClick={() => fileRef.current?.click()}>📂 Load .jsonl</button>
+          <button className="btn" onClick={p.onFetchIsolatedReplay}>⚡ Isolated runs</button>
         </>
       )}
       {p.mode === "live" && (

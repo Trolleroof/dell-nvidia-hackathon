@@ -23,18 +23,25 @@ Append a changelog entry whenever you ship. Edit only under `sim/a/`.
 | Pose lookup (`pose_lookup.py`) | ✅ loads `poses.json` |
 | Pose verify (`verify_poses.py`) | ✅ arm0/+Y and arm1/-Y targets ≤ 5 cm |
 | Offscreen render (`render.py`) | ✅ 1280×720 dashboard camera |
-| Reset scenarios | ✅ `misaligned`, `empty_bin` via `FACTORYMIND_SIM_SCENARIO` |
+| Reset scenarios | ✅ `default`, `sort_green`, `misaligned`, `empty_bin` |
 | Oracle replay frames | ✅ 13 PNGs in `frames/replay/` |
 | Demo pipeline | ✅ `run_demo.py` |
 | Dashboard frame contract | ✅ `frames/latest.png` + `latest.json` |
 | MCP scenario reset | ✅ `reset_cell(scenario=...)` |
 | GB10 headless guide | ✅ `GB10_CHECKLIST.md` |
-| Phase 1 task state | ✅ ground-truth sim state; extend with object color labels for sorting |
+| Phase 1 task state | ✅ `task` + `parts[].color` / `label` / `shape` |
+| Team feed (`run_team_feed.py`) | ✅ isolated `diffusion_run.jsonl` + `ar_run.jsonl` |
+| Colored part boxes (`build_cell.py`) | ✅ yellow / blue / green MJCF geoms |
+| `sort_green` scenario | ✅ task-aware oracle (green boxes only) |
+| Misaligned oracle recovery | ✅ per-part approach targets |
+| C5 `frame_url` sync | ✅ `/sim/replay/step_XXXX.png` in telemetry rows |
+| GB10 manifest | ✅ `run_gb10_check` → `telemetry/gb10_manifest.json` |
+| Demo telemetry export | ✅ `run_team_feed` → `demo/static/*.jsonl` |
 | Phase 2 VLA/video | ⏳ blocked until DiffusionGemma endpoint is green |
 
 **Backend:** `mock` (default) · `FACTORYMIND_SIM_BACKEND=mujoco` for physics + frames
 
-**Scenarios:** `FACTORYMIND_SIM_SCENARIO=default|misaligned|empty_bin`
+**Scenarios:** `FACTORYMIND_SIM_SCENARIO=default|sort_green|misaligned|empty_bin`
 
 ---
 
@@ -58,11 +65,61 @@ env.render_rgb()          # → H×W×3 uint8 array
 
 **Named targets:** `home`, `bin_a`, `bin_b`, `station_1`, `station_2`, `part_1`, `part_2`, `part_3`
 
-**Phase 1 planning contract:** NemoClaw/DiffusionGemma should plan from text plus structured sim state. For tasks like "sort green boxes," expose object color/type metadata in C2 state. Do not block the sim on camera/video perception; VLA is Phase 2 after DiffusionGemma works on the box.
+## Handoff for B / C (no MuJoCo required on their side)
+
+```bash
+cd factorymind && source .venv/bin/activate
+export FACTORYMIND_SIM_BACKEND=mujoco
+
+# 1) Generate isolated per-model telemetry + frames
+python -m factorymind.sim.a.run_team_feed
+# or Phase 1 sorting demo:
+python -m factorymind.sim.a.run_team_feed --scenario sort_green
+
+# 2) Serve for dashboard (replay side-by-side)
+python -m factorymind.sim.a.serve_team_feed
+# Diffusion run:  http://localhost:8766/telemetry/diffusion_run.jsonl
+# AR run:         http://localhost:8766/telemetry/ar_run.jsonl
+```
+
+**C2 extras for planners:** `task`, `scenario`, `parts[].color` / `label` / `shape`
+
+**Phase 1 planning contract:** NemoClaw/DiffusionGemma should plan from text plus structured sim state. For tasks like "sort green boxes," use `parts[].color` in C2 — no camera perception required until Phase 2.
 
 ---
 
 ## Changelog
+
+### 2026-06-14 — Misaligned recovery + frame-synced C5 + GB10 manifest
+
+- `oracle.py` — misaligned / `grip_miss` uses per-part approach (`part_1` not `bin_a`).
+- C5 rows include optional `frame_url` for dashboard frame sync during replay.
+- `run_gb10_check` — scenario tests + `telemetry/gb10_manifest.json`.
+- Smoke test covers `misaligned` on mock + MuJoCo.
+- Dashboard `CellView` shows MuJoCo PNG when `frame_url` is present (`serve_team_feed` :8766).
+
+### 2026-06-14 — Colored boxes + dashboard isolated replay hookup
+
+- `part_catalog.py` — `BOX_RGBA` / `rgba_for_part()` for MuJoCo part geoms.
+- Rebuilt `cell.xml` — yellow / blue / green boxes visible in renders.
+- Smoke test covers MuJoCo `sort_green`.
+- `run_team_feed` auto-copies isolated runs to `demo/static/` for Role C replay.
+- Dashboard (static + Vite): **Isolated runs** button merges `diffusion_run.jsonl` + `ar_run.jsonl`.
+
+### 2026-06-14 — Isolated telemetry runs + sort_green scenario
+
+- `telemetry_bridge.py` — per-model C5 rows with `precision`; `diffusion_run.jsonl` / `ar_run.jsonl` paths.
+- `run_team_feed.py` — writes separate isolated runs (matched NVFP4 placeholders) for dashboard replay.
+- `sort_green` scenario — task "Sort the green boxes to station_1"; oracle + `is_task_done()` are color-aware.
+- `part_catalog.py` — `parts_for_task()`, `is_task_done()` helpers for Phase 1 text sorting.
+- Smoke test covers `sort_green` on mock backend.
+
+### 2026-06-14 — Team integration feed (B/C handoff)
+
+- C2 state now includes `task`, `scenario`, and per-part `color` / `label` / `shape` (Phase 1 sorting).
+- `run_team_feed.py` — oracle episode → `telemetry/run.jsonl` + replay PNGs + `latest.png`.
+- `serve_team_feed.py` — HTTP serve telemetry + frames for dashboard Live mode.
+- `telemetry_bridge.py` — real `action_summary` + `sim_event` from sim steps (latency placeholders until B binds models).
 
 ### 2026-06-14 — Dashboard frame contract + scenario parity
 

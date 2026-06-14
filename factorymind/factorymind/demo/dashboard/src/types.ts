@@ -8,6 +8,7 @@ export interface TelemetryRow {
   step: number;
   model: ModelName;
   endpoint: string;
+  precision?: "nvfp4" | "bf16";
   latency_ms: number;
   ttft_ms: number;
   prompt_tokens: number;
@@ -16,6 +17,7 @@ export interface TelemetryRow {
   retries: number;
   action_summary: string;
   sim_event: string;
+  frame_url?: string;
   // derived client-side (not in the file), tokens/sec for the generation phase:
   _tokS?: number;
 }

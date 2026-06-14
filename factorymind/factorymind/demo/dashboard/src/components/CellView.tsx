@@ -21,7 +21,19 @@ const BINS: [string, number, number, string][] = [
   ["station_1", 415, 190, "#b06bff"],
 ];
 
-export function CellView({ latest, step, resetKey }: { latest?: TelemetryRow; step: number; resetKey: number }) {
+export const SIM_FRAME_BASE = "http://localhost:8766";
+
+export function CellView({
+  latest,
+  step,
+  resetKey,
+  frameBase = SIM_FRAME_BASE,
+}: {
+  latest?: TelemetryRow;
+  step: number;
+  resetKey: number;
+  frameBase?: string;
+}) {
   const [arms, setArms] = useState<Arm[]>([
     { x: 150, base: 250, angle: -0.5, grip: false },
     { x: 370, base: 250, angle: 0.5, grip: false },
@@ -63,6 +75,14 @@ export function CellView({ latest, step, resetKey }: { latest?: TelemetryRow; st
   return (
     <div className="card">
       <h2 className="card-title"><span className="tick" />Assembly Cell · 2 Arms</h2>
+      {latest?.frame_url ? (
+        <img
+          src={`${frameBase}${latest.frame_url}`}
+          alt={`Sim frame step ${step}`}
+          className="w-full h-[300px] rounded-xl object-cover border border-line bg-[#05080c]"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+      ) : (
       <svg
         viewBox="0 0 520 300"
         className="w-full h-[300px] rounded-xl"
@@ -101,6 +121,7 @@ export function CellView({ latest, step, resetKey }: { latest?: TelemetryRow; st
             style={{ transition: "all .4s ease" }} />
         ))}
       </svg>
+      )}
       <div className="flex gap-3.5 flex-wrap mt-3 text-xs text-dim">
         <span>Step <b className="text-text">{step}</b></span>
         <span>Event <b className="text-text">{latest?.sim_event ?? "—"}</b></span>

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 SimBackend = Literal["mock", "mujoco"]
-SimScenario = Literal["default", "misaligned", "empty_bin"]
+SimScenario = Literal["default", "sort_green", "misaligned", "empty_bin"]
 
 
 @dataclass(frozen=True)
@@ -23,6 +23,6 @@ def get_config() -> SimConfig:
     if backend not in ("mock", "mujoco"):
         backend = "mock"
     scenario = os.environ.get("FACTORYMIND_SIM_SCENARIO", "default")
-    if scenario not in ("default", "misaligned", "empty_bin"):
+    if scenario not in ("default", "sort_green", "misaligned", "empty_bin"):
         scenario = "default"
     return SimConfig(backend=backend, scenario=scenario)  # type: ignore[arg-type]

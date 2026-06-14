@@ -30,6 +30,8 @@ This checklist validates the Phase 1 sim path only: structured C2 state, MuJoCo 
 
 ## Pass criteria
 
-- `OK [mock]` and `OK [mujoco]` from smoke test
-- `All targets within 0.05 m` from verify_poses
-- `replay/step_*.png` exists (≥ 10 frames) after run_demo
+- `OK [mock]` and `OK [mujoco]` from smoke test (includes `sort_green` + `misaligned`)
+- `All assigned targets within 0.05 m` from verify_poses
+- `replay/step_*.png` exists (≥ 10 frames) after run_oracle_replay
+- `telemetry/gb10_manifest.json` written with `"ok": true`
+- On GB10 Linux: headless render passes with `MUJOCO_GL=egl`

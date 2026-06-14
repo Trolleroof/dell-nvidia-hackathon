@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Mode, TelemetryRow } from "../types";
 import { isAR } from "../types";
 import { decisionPair } from "../lib/mockEngine";
-import { aggregate, parseJSONL, withTokS } from "../lib/stats";
+import { aggregate, ISOLATED_REPLAY_PATHS, mergeIsolatedRuns, parseJSONL, withTokS } from "../lib/stats";
 
 const MAX_PTS = 60;
 const MAX_STREAM = 40;
@@ -135,6 +135,33 @@ export function useTelemetry() {
     [reset],
   );
 
+  const loadIsolatedReplay = useCallback(
+    (diffusionText: string, arText: string, label = "isolated runs") => {
+      const rows = mergeIsolatedRuns(parseJSONL(diffusionText), parseJSONL(arText));
+      replayRef.current = { rows, idx: 0 };
+      reset();
+      setMode("replay");
+      setPlaying(true);
+      setHint(
+        `Loaded ${label} · ${rows.length} rows (${rows.filter((r) => !isAR(r.model)).length} diffusion + ${rows.filter((r) => isAR(r.model)).length} AR) — replaying side-by-side.`,
+      );
+    },
+    [reset],
+  );
+
+  const fetchIsolatedReplay = useCallback(async () => {
+    try {
+      const [dRes, aRes] = await Promise.all([
+        fetch(ISOLATED_REPLAY_PATHS.diffusion, { cache: "no-store" }),
+        fetch(ISOLATED_REPLAY_PATHS.ar, { cache: "no-store" }),
+      ]);
+      if (!dRes.ok || !aRes.ok) throw new Error(`${dRes.status}/${aRes.status}`);
+      loadIsolatedReplay(await dRes.text(), await aRes.text(), "diffusion_run + ar_run");
+    } catch (e) {
+      setHint(`Isolated replay unreachable (${(e as Error).message}) — run run_team_feed first, serve over http.`);
+    }
+  }, [loadIsolatedReplay]);
+
   useEffect(() => {
     if (mode !== "replay" || !playing) return;
     const id = setInterval(() => {
@@ -211,6 +238,6 @@ export function useTelemetry() {
     aggregates,
     diffusionRows: dRowsRef.current,
     arRows: aRowsRef.current,
-    reset, loadReplay,
+    reset, loadReplay, loadIsolatedReplay, fetchIsolatedReplay,
   };
 }

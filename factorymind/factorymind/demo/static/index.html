@@ -292,6 +292,7 @@
     </label>
     <input id="fileInput" type="file" accept=".jsonl,.json,.txt" style="display:none" />
     <button id="loadBtn" class="btn" style="display:none">📂 Load .jsonl</button>
+    <button id="loadIsolatedBtn" class="btn" style="display:none">⚡ Isolated runs</button>
     <input id="liveUrl" class="btn" style="display:none;text-transform:none;width:260px;text-align:left"
            value="../../telemetry/run.jsonl" />
     <span class="hint" id="hint">Synthetic fast/slow timings — rehearse the story with no GPU.</span>
@@ -862,6 +863,7 @@ function setMode(mode) {
   $("footMode").textContent = mode;
   document.querySelectorAll("#modeSeg button").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
   $("loadBtn").style.display = mode === "replay" ? "" : "none";
+  $("loadIsolatedBtn").style.display = mode === "replay" ? "" : "none";
   $("liveUrl").style.display = mode === "live" ? "" : "none";
   const srcBadge = $("srcBadge");
   srcBadge.lastChild.textContent = mode === "mock" ? "Mock" : mode === "replay" ? "Replay" : "Live Feed";
@@ -917,6 +919,27 @@ $("numbersChk").addEventListener("change", (e) => {
 });
 
 $("loadBtn").addEventListener("click", () => $("fileInput").click());
+$("loadIsolatedBtn").addEventListener("click", async () => {
+  try {
+    const [dRes, aRes] = await Promise.all([
+      fetch("../../telemetry/diffusion_run.jsonl", { cache: "no-store" }),
+      fetch("../../telemetry/ar_run.jsonl", { cache: "no-store" }),
+    ]);
+    if (!dRes.ok || !aRes.ok) throw new Error(dRes.status + "/" + aRes.status);
+    const dRows = parseJSONL(await dRes.text());
+    const aRows = parseJSONL(await aRes.text());
+    const dBy = {}; dRows.forEach(r => { dBy[r.step] = r; });
+    const aBy = {}; aRows.forEach(r => { aBy[r.step] = r; });
+    const steps = [...new Set([...Object.keys(dBy), ...Object.keys(aBy)])].map(Number).sort((a,b) => a-b);
+    const rows = [];
+    steps.forEach(s => { if (dBy[s]) rows.push(dBy[s]); if (aBy[s]) rows.push(aBy[s]); });
+    $("hint").textContent = `Loaded isolated runs · ${rows.length} rows — replaying side-by-side.`;
+    State.playing = true; $("playBtn").textContent = "⏸ Pause";
+    startReplay(rows);
+  } catch (e) {
+    $("hint").textContent = `Isolated replay unreachable (${e.message}) — run run_team_feed, serve over http.`;
+  }
+});
 $("fileInput").addEventListener("change", (e) => {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();

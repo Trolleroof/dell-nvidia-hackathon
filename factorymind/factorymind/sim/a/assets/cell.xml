@@ -236,17 +236,17 @@
     </body>
     <body name="part_1" pos="0.22 0.12 0.46">
       <joint name="part_1_free" type="free"/>
-      <geom name="part_1_geom" size="0.015 0.015 0.015" type="box" mass="0.05" rgba="0.9 0.85 0.2 1"/>
+      <geom name="part_1_geom" size="0.015 0.015 0.015" type="box" mass="0.05" rgba="0.95 0.85 0.15 1"/>
       <site name="part_1_tip" pos="0 0 0" size="0.012"/>
     </body>
     <body name="part_2" pos="0.25 0.15 0.46">
       <joint name="part_2_free" type="free"/>
-      <geom name="part_2_geom" size="0.015 0.015 0.015" type="box" mass="0.05" rgba="0.9 0.85 0.2 1"/>
+      <geom name="part_2_geom" size="0.015 0.015 0.015" type="box" mass="0.05" rgba="0.25 0.45 0.92 1"/>
       <site name="part_2_tip" pos="0 0 0" size="0.012"/>
     </body>
     <body name="part_3" pos="0.28 0.18 0.46">
       <joint name="part_3_free" type="free"/>
-      <geom name="part_3_geom" size="0.015 0.015 0.015" type="box" mass="0.05" rgba="0.9 0.85 0.2 1"/>
+      <geom name="part_3_geom" size="0.015 0.015 0.015" type="box" mass="0.05" rgba="0.22 0.72 0.38 1"/>
       <site name="part_3_tip" pos="0 0 0" size="0.012"/>
     </body>
     <light name="arm0_top" pos="-0.22 0.35 2" dir="0 0 -1" mode="trackcom"/>

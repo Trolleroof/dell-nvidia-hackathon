@@ -39,6 +39,7 @@ export default function App() {
         hint={t.hint}
         onReset={onReset}
         onLoadReplay={t.loadReplay}
+        onFetchIsolatedReplay={t.fetchIsolatedReplay}
       />
 
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 2xl:grid-cols-[1.05fr_1.55fr_0.95fr]">
