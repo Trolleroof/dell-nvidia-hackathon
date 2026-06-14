@@ -12,31 +12,36 @@ A factory floor can't send its data to the cloud and can't tolerate latency, so 
 
 ## Why it wins
 
-- **On-theme:** an always-on business agent running locally on the GB10. No cloud round-trip — data stays on-prem, latency stays low. That's the exact use case the hardware (and the sponsors) exist to sell.
+- **On-theme and on-brief:** an always-on business agent running locally on the GB10 via **NemoClaw + OpenClaw + OpenShell** — the required stack is the demo, not a footnote. No cloud round-trip; data stays on-prem; the agent harness is exactly what the sponsors built.
 - **Architecturally honest:** DiffusionGemma generates a whole block of tokens *in parallel* per pass, instead of one token at a time. We frame each robot action plan as a structured block — all N robots' next moves emitted in a single parallel pass. Parallel generation for parallel control.
-- **Visible proof, not a research claim:** the demo runs a side-by-side latency counter — DiffusionGemma controller vs. a standard autoregressive Gemma 4 controller driving the same cell. When the diffusion one keeps the line moving while the AR one stutters, the clock makes the argument.
+- **Visible proof, not a research claim:** the demo runs a side-by-side latency counter — DiffusionGemma controller vs. a standard autoregressive Gemma 4 controller driving the same cell, both orchestrated by NemoClaw. When the diffusion one keeps the line moving while the AR one stutters, the clock makes the argument. NemoClaw's own control UI is embedded in the dashboard so judges see the agent thinking in real time.
 
 > **Framing discipline:** the slides say *"parallel generation for parallel control, running fully local"* — NOT *"diffusion is fundamentally better."* The second is a benchmark we can't run in a day; the first is visibly true in the demo and doesn't invite a question we can't answer.
 
 ## How it works
 
-A single persistent agent runs a control loop on the GB10:
+**NemoClaw orchestrates OpenClaw** as the always-on agent harness — the required stack is the core, not a layer on top.
 
-1. **Read** sim state (part positions, station status, a camera frame of the cell)
-2. **Plan** — prompt the model for a JSON action block: one object per robot (`target`, `action`)
-3. **Parse** the structured output (hard schema — diffusion output must be constrained)
-4. **Step** the sim with those actions
-5. **Repeat** — continuously, always-on
+1. **NemoClaw starts OpenClaw** in an OpenShell sandbox, configured with the local model endpoint and the sim's tool server URL
+2. **Read** — OpenClaw calls the `get_state` tool → sim returns current cell state
+3. **Plan** — OpenClaw prompts the local model with the state + tool schema; model returns a `CellPlan` as a tool call
+4. **Validate** — the `step` tool enforces the hard schema; bad output → OpenClaw reprompts once; second failure → `hold_position` tool. Loop never blocks.
+5. **Step** — sim advances; events emit (pick success, collision, task complete)
+6. **Repeat** — NemoClaw keeps the OpenClaw agent loop running, always-on
+7. **Render** — the frontend dashboard **embeds NemoClaw's control UI (`:8080`)** alongside the live latency race
 
-Multimodal input is the differentiator: feed it a camera frame ("this bin is empty, this part is misaligned") and it replans.
+Multimodal input: include a camera frame in the `get_state` tool response ("bin empty," "part misaligned") and OpenClaw replans on the next pass.
 
 ## Stack
 
-- **Required (provided/pre-staged):** OpenClaw + NVIDIA NemoClaw + OpenShell
-- **Model:** DiffusionGemma (quantized, ~18 GB) served as a local OpenAI-compatible endpoint on the box (LM Studio / llama.cpp server / vLLM on `localhost`)
-- **Fallback model:** standard Gemma 4 (same control loop, loses the diffusion hero moment but still a working local multi-robot controller)
-- **Sim:** PyBullet or MuJoCo — 2–3 simple robot arms doing one pick-and-place / sort / stack task. Use an existing sim; do not build physics.
-- **Hardware:** Dell Pro Max with GB10 — GB10 Grace Blackwell Superchip, 128 GB unified memory, **ARM64 / DGX OS (Ubuntu-based)**
+- **Agent harness (central):** NemoClaw v0.0.55 + OpenClaw + OpenShell — **installed and running on this box**. OpenClaw is the always-on agent; NemoClaw orchestrates it; OpenShell sandboxes it.
+- **Tool server (B):** Python + FastAPI — exposes `get_state`, `step`, `hold_position` to OpenClaw. Schema-validates every `CellPlan` before touching the sim.
+- **Model:** DiffusionGemma `nvidia/diffusiongemma-26B-A4B-it-NVFP4` (~18 GB) served at `:8000`; NemoClaw points OpenClaw at it.
+- **Model staging status (June 14, 2026):** DiffusionGemma weights are already staged locally at `/home/dell/factorymind/models/diffusiongemma` and on the SSD at `/media/dell/T9/factorymind/models/diffusiongemma`; Gemma 4 AR is staged in the matching `gemma4-ar` paths as the fallback baseline.
+- **Fallback model:** Gemma 4 AR at `:8001` — same NemoClaw loop, same tools, loses the diffusion speed story but keeps the whole demo.
+- **Sim:** MuJoCo (PyBullet fallback) — 2 robot arms, one pick-and-place task. Use an existing model; do not build physics.
+- **Frontend:** React/Vite dashboard + static-HTML fallback; **embeds NemoClaw control UI (`:8080`)** in an iframe.
+- **Hardware:** Dell Pro Max with GB10 — GB10 Grace Blackwell Superchip, 128 GB unified memory, **aarch64 / DGX OS (Ubuntu 24.04)**
 
 ## Constraint: no GB10 before hackathon day
 
@@ -51,7 +56,7 @@ We do **not** have SSH or physical access to the Dell Pro Max / GB10 ahead of ti
 ## Scope guardrails (so it ships 10:00 → 18:00)
 
 - 2 robot arms, **one** assembly task. One cell, not a factory. (Drop the third arm unless everything else is green by 15:00.)
-- **Ship order:** (1) sim + control loop with mock LLM on Mac → (2) same loop on box with *any* local model → (3) side-by-side latency counter → (4) DiffusionGemma hero path if time.
+- **Ship order:** (1) sim tool server + NemoClaw agent with mock model → (2) same NemoClaw loop on box with AR Gemma 4 → (3) side-by-side latency counter with NemoClaw UI embedded → (4) DiffusionGemma hero path if time.
 - Constrain model output to a tight JSON schema; parse hard. Reliability > cleverness.
 - **Primary fallback is the plan, not a panic button:** same loop on standard AR Gemma 4. Demo still works; we lose the diffusion speed story, not the whole project.
 - **No camera / multimodal** unless steps 1–3 are done on the box by 14:00.
@@ -103,8 +108,8 @@ Create one folder on the drive so paths are predictable on the box:
 
 **DiffusionGemma (hero model)**
 
-- Hugging Face repo: `google/diffusiongemma-26b-a4b-it`
-- Prefer a **quantized** variant if available (NVFP4 / Q4) — fits ~18 GB story in the pitch; full weights are much larger.
+- Hugging Face repo: `nvidia/diffusiongemma-26B-A4B-it-NVFP4`
+- Use the **NVIDIA NVFP4** build as the default hero path — it fits the ~18 GB story in the pitch and matches the box-serving plan in the other docs.
 - Download the **full snapshot** (config, tokenizer, weight shards) — not just a single `.gguf` unless your serve script explicitly uses llama.cpp.
 
 **Gemma 4 AR (benchmark baseline)**
@@ -125,7 +130,7 @@ hf auth login
 # 4. Download DiffusionGemma — resume-safe, do not interrupt
 export DRIVE="/Volumes/T9/factorymind"
 mkdir -p "$DRIVE/models/diffusiongemma"
-hf download google/diffusiongemma-26B-A4B-it \
+hf download nvidia/diffusiongemma-26B-A4B-it-NVFP4 \
   --local-dir "$DRIVE/models/diffusiongemma"
 
 # 5. Download AR fallback (replace REPO with the Gemma 4 model ID you settle on)
@@ -274,7 +279,7 @@ python -m factorymind.agent.run --base-url http://localhost:8001/v1
 **Hard drive — download at home, copy on site**
 
 - [ ] SSD 256 GB+ formatted (exFAT if plugging directly into GB10)
-- [ ] `google/diffusiongemma-26b-a4b-it` → `models/diffusiongemma/` (verified with `du -sh`)
+- [ ] `nvidia/diffusiongemma-26B-A4B-it-NVFP4` → `models/diffusiongemma/` (verified with `du -sh`)
 - [ ] Gemma 4 AR fallback → `models/gemma4-ar/`
 - [ ] Project → `repo/factorymind/`
 - [ ] `nemoclaw.sh` + vLLM serve commands saved under `scripts/`

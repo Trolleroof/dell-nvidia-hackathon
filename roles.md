@@ -5,10 +5,10 @@
 **One-line thesis:** A factory floor can't send data to the cloud and can't tolerate latency, so the controller runs local, always-on, and fast — one persistent agent coordinating a cell of robot arms, replanning in real time, entirely on the box.
 
 > **North-star ship order (do not reorder):**
-> 1. Sim + control loop with **mock** LLM (runs on any laptop, zero GPU).
-> 2. Same loop on the box with **AR Gemma 4** (the safe, known model).
-> 3. Side-by-side **diffusion-vs-AR latency dashboard**.
-> 4. **DiffusionGemma** hero path, *if* steps 1–3 are green.
+> 1. Sim tool server + NemoClaw agent with **mock model** (runs on any laptop, zero GPU).
+> 2. Same NemoClaw loop on the box with **AR Gemma 4** pointed at `:8001`.
+> 3. Side-by-side **diffusion-vs-AR latency dashboard** with NemoClaw control UI embedded.
+> 4. **DiffusionGemma** hero path on `:8000`, *if* steps 1–3 are green.
 >
 > Every role's "done" is defined against this order. We always have a working demo at each step.
 
@@ -49,17 +49,19 @@ JSON-serializable. What `get_state()` returns and what B feeds the model.
 }
 ```
 
-### C3 — LLMClient interface (owned by B, used by everyone)
-One interface, swappable backends. No business logic anywhere else touches a URL.
+### C3 — OpenClaw tool definitions (owned by B)
+B runs a FastAPI tool server that NemoClaw/OpenClaw calls. Three tools, each with a JSON schema OpenClaw receives at agent start:
 
 ```python
-class LLMClient(Protocol):
-    def plan(self, state: dict) -> tuple[CellPlan, Telemetry]: ...
+# Tool: get_state — no args, returns C2 state JSON
+# Tool: step — args: CellPlan (C1 schema), returns {"ok": true, "events": [...]}
+# Tool: hold_position — no args, no-op safety fallback, returns {"ok": true}
 
-# MockClient(scripted JSON)        — laptop dev + CI, zero GPU
-# OpenAICompatClient(base_url, m)   — real box endpoints, /v1/chat/completions
-# OracleClient(sim)                 — deterministic correct actions, no model (demo floor)
+# On laptop dev: tool server runs against the sim in oracle/mock mode — no GPU, no NemoClaw needed
+# On box: same tool server, NemoClaw points at it; swap model endpoint via env var
 ```
+
+The old `LLMClient` Python Protocol is gone — NemoClaw owns the model call; B only owns the tools it exposes.
 
 ### C4 — Endpoint contract (owned by D, handed to B)
 What D must publish for B to point at:
@@ -82,11 +84,12 @@ factorymind/
 ├── factorymind/
 │   ├── sim/
 │   │   └── a/          # A: Role A workspace — cell, oracle, MCP, assets (edit here only)
-│   ├── agent/          # B:  loop, schemas, llm_client (mock/openai/oracle), telemetry
-│   └── demo/           # C:  dashboard (static-HTML + Vite), replay mode
+│   ├── tools/          # B:  FastAPI tool server (get_state/step/hold_position), schemas (C1/C2), telemetry extractor
+│   └── demo/           # C:  dashboard (static-HTML + Vite), replay mode, NemoClaw UI embed
+├── nemoclaw/           # B+D: nemoclaw agent config / openclaw system prompt / tool manifest
 ├── scripts/            # D:  box_setup.sh, start_models.sh, run_demo.sh, save_images.sh
 ├── models/             # D:  (gitignored) NVFP4 diffusion + AR weights, copied from SSD
-├── telemetry/          # B→C runtime JSONL
+├── telemetry/          # B→C runtime JSONL (extracted from NemoClaw logs)
 ├── CODEOWNERS.md       # who owns which folder (avoid merge conflicts)
 ├── requirements.txt    # pinned; pip install ON THE BOX (no Mac wheels)
 └── README.md
@@ -145,93 +148,91 @@ MuJoCo (`mujoco` Python bindings: `MjModel`, `MjData`, `mj_step`, `Renderer`), M
 
 ---
 
-## Role B — Agent Engineer (Control Loop, Schemas, Mock LLM, Telemetry)
+## Role B — Tool Server Engineer (OpenClaw Tools, Schemas, Telemetry)
 
 ### Purpose
-Own the brain: the always-on loop that reads state, asks the model for a `CellPlan`, validates it hard, steps the sim, and logs telemetry. Own the model-agnostic `LLMClient` and the JSON schema that is the project's central contract.
+Own the interface between NemoClaw/OpenClaw and the physical sim. Build and serve the three tools OpenClaw calls. Own the action schema (C1), the tool definitions (C3), and telemetry extraction (C5). **You do not build or own the control loop — NemoClaw is the loop.**
 
 ### Main responsibilities
-- Define and own C1 (schema), C3 (LLMClient), C5 (telemetry).
-- Implement the control loop: **read → prompt → call model → parse → validate → retry once → step → log → repeat.**
-- Build the prompt (system + 1–2 golden examples + current state + schema instructions); instruct the model to return **only** valid JSON.
-- Ship `MockClient` (scripted, deterministic — laptop/CI), `OpenAICompatClient(base_url, model)` (real endpoints), and wire A's `OracleClient`.
-- Hard parsing: on failure, reprompt once; on second failure, **hold position** (last valid action / no-op) and log `parsed_ok=false`.
-- Instrument latency, **time-to-first-token (separately)**, token counts → telemetry JSONL.
+- Define and own C1 (action schema), C3 (tool definitions), C5 (telemetry).
+- Run a **FastAPI tool server** that exposes `get_state`, `step`, and `hold_position` as HTTP endpoints with JSON schemas OpenClaw can consume.
+- `step()` validates the incoming `CellPlan` (Pydantic v2) hard; returns `{"ok": false, "error": "..."}` on schema violation so OpenClaw reprompts; on a second bad call within the same step, call `hold_position` internally.
+- Write and maintain the **OpenClaw system prompt** (`nemoclaw/system_prompt.md`): task description, tool manifest, 1–2 golden examples, schema instructions. This is the prompt engineering work.
+- **Telemetry extractor:** tail NemoClaw's agent log (JSONL), parse tool-call timings and model latency, emit one C5 line per sim step.
+- **Mock mode:** tool server runs against A's oracle policy (no LLM, no NemoClaw) for laptop dev and CI.
 
 ### Required tools, skills, technologies
-Python, Pydantic v2, the `openai` client (OpenAI-compatible `/v1/chat/completions`), structured output / JSON-schema-guided decoding, prompt engineering, `httpx`/async for clean latency measurement, logging. *(This is the FastAPI/LangGraph wheelhouse — staff it with the strongest Python person.)*
+Python, FastAPI, Pydantic v2, `uvicorn`, prompt engineering (the system prompt is now the place for it), log parsing. Optionally `httpx` for the telemetry extractor.
 
 ### Inputs and expected outputs
-- **Inputs:** C2 state from A; endpoint info (C4) from D; schema (co-owned with A).
-- **Outputs:** validated `CellPlan` → A's `step()`; telemetry JSONL → C; the `LLMClient` + schema the whole team codes against.
+- **Inputs:** tool calls from OpenClaw (JSON over HTTP); C2 state from A's sim; C4 endpoint info from D (needed to write the NemoClaw agent config, not to make the model call yourself).
+- **Outputs:** tool responses → OpenClaw; C5 telemetry JSONL → C's dashboard.
 
 ### Step-by-step workflow
-1. Define C1 + two golden example outputs.
-2. Write `MockClient` returning schema-valid JSON; get the loop running against A's sim with **zero GPU**.
-3. Implement `OpenAICompatClient` (structured output via `response_format`/guided JSON, or tool-calling with the `gemma4` parser).
-4. Implement parse → retry-once → hold-position.
-5. Instrument latency / TTFT / tokens → JSONL (C5).
-6. On the box: swap `MockClient` → `OpenAICompatClient(AR_URL)`; confirm the loop drives the real cell.
-7. For the race: run two clients (`DIFFUSION_URL`, `AR_URL`) over **identical state, identical max-tokens**, log both.
+1. Define C1 + write two golden example tool call/response pairs.
+2. Stand up the FastAPI tool server in mock/oracle mode; smoke test: `POST /step` with a valid `CellPlan`, confirm sim advances.
+3. Write `nemoclaw/agent_config.yaml` (or equivalent NemoClaw config): tool server URL, model endpoint (C4), system prompt path.
+4. Launch NemoClaw pointed at the tool server + mock model endpoint; confirm OpenClaw completes one full pick-and-place episode.
+5. Write the telemetry extractor; confirm C5 JSONL appears in `telemetry/`.
+6. On the box: update `agent_config.yaml` with `AR_URL=http://localhost:8001/v1`; NemoClaw drives the real model.
+7. For the race: two NemoClaw instances, one per model endpoint, over identical state; telemetry extractor logs both.
 
 ### Collaboration
-- **With A:** co-own C1; consume C2; use the oracle as a client.
-- **With D:** the C4 endpoint contract is your handoff — confirm model name, structured-output support, `max_model_len`.
-- **With C:** freeze C5 telemetry fields and transport (SSE/websocket or tail-JSONL) up front; C builds against it immediately.
+- **With A:** co-own C1; your `step` tool wraps A's `step()`; the oracle mode is your mock path.
+- **With D:** C4 endpoint info goes into `agent_config.yaml` — D hands you the URL and model name; you write the config.
+- **With C:** freeze C5 fields and the JSONL path/transport up front; C builds against it immediately.
 
 ### Edge cases, limitations, failure handling
-- Malformed/again-malformed JSON (diffusion can emit layout artifacts) → retry once → hold position; never block the loop.
-- Model wraps JSON in prose → extract/strip before parsing; prefer guided-JSON decoding to prevent it.
-- Endpoint down / latency spike → timeout → hold + log.
-- **Diffusion structured-output reliability is the key unknown** → constrain hard, use the `gemma4` tool-call/reasoning parser, keep the canvas tight.
-- Fairness of the race → identical prompts/limits/machine; report **TTFT separately from total** since diffusion's TTFT is higher by design.
-- Runaway retries → cap at 1 and always advance the sim.
+- OpenClaw sends bad `CellPlan` → `step` tool returns `{"ok": false}` → OpenClaw reprompts → second failure → tool server calls `hold_position`; loop never blocks.
+- Tool server crash → NemoClaw stalls; keep the tool server simple, restart-safe, and log exceptions.
+- **Diffusion structured-output reliability** → the tool schema is the hard constraint; prefer guided-JSON/tool-calling on the vLLM side (D's config).
+- Telemetry extractor can't parse a NemoClaw log format → emit a partial C5 line with `parsed_ok=false`; dashboard degrades gracefully.
 
 ### Suggested improvements / missing details
-- Use vLLM **guided JSON / structured outputs** to nearly eliminate parse failures.
+- Keep the system prompt short and the tool schemas tight — diffusion canvas is 256 tokens; the system prompt eats into that.
 - Log enough to compute mean/p50/p95 latency and parse-success rate for the pitch.
-- Make the action block deliberately long (C1 note) so the speed delta is visible.
-- Add a "replan on event" path (empty bin / misalignment) for the multimodal story.
+- Add a "replan on event" tool response path (`{"ok": true, "replan": true, "reason": "bin empty"}`) for the multimodal story.
 
 ---
 
-## Role C — Frontend Engineer (Diffusion-vs-AR Latency Dashboard)
+## Role C — Frontend Engineer (Latency Dashboard + NemoClaw UI Integration)
 
 ### Purpose
-Own the visible proof. Build the local dashboard that makes the latency argument something judges *see*, plus the cell visualization. This is the persuasion surface — when the diffusion line keeps moving while AR stutters, the clock makes the argument.
+Own the visible proof. Build the local dashboard that makes the latency argument something judges *see*, plus the cell visualization. **Also integrate NemoClaw's own control UI (`:8080`) into the demo surface** — embed it in an iframe or link to it prominently so judges can see the agent thinking in real time alongside the latency race.
 
 ### Main responsibilities
 - Build a dashboard that **runs on the box and opens in the box's browser** (never SSH X-forwarding — it's laggy).
-- Show: (1) the cell (A's frames, or a clean viz), (2) **side-by-side latency panels** — tokens/sec, TTFT, total ms, throughput-over-time, (3) the parsed action stream, (4) an aggregate stats panel.
-- Consume C5 telemetry (live feed from B, or tail the JSONL).
-- Make every number legible from across a room; show a clear "winner" indicator — honestly (see failure notes).
+- Show: (1) the cell (A's frames, or a clean viz), (2) **side-by-side latency panels** — tokens/sec, TTFT, total ms, throughput-over-time, (3) the parsed action/tool-call stream, (4) an aggregate stats panel, (5) **NemoClaw control UI embedded** (iframe pointing at `http://localhost:8080`).
+- Consume C5 telemetry (live feed from B's extractor, or tail the JSONL).
+- Make every number legible from across a room; show a clear "winner" indicator — honestly.
 - Rehearse the whole narrative on a laptop with **mock fast/slow timings** before the box exists.
 
 ### Required tools, skills, technologies
-React/TypeScript + Vite + Tailwind + a charting lib (Recharts/Chart.js) for the polished version. **Critical decision up front:** also build a **single static HTML + vanilla-JS** version — it's far more robust to serve on an unfamiliar box than a full Vite build on aarch64. SSE/websocket or polling for the live feed; `<img>`/canvas for frames.
+React/TypeScript + Vite + Tailwind + a charting lib (Recharts/Chart.js) for the polished version. **Critical decision up front:** also build a **single static HTML + vanilla-JS** version — far more robust to serve on an unfamiliar box. SSE/websocket or polling for the live feed; `<img>`/canvas for frames; `<iframe src="http://localhost:8080">` for NemoClaw UI.
 
 ### Inputs and expected outputs
-- **Inputs:** C5 telemetry from B (fields + transport agreed up front); frames or state from A.
-- **Outputs:** the dashboard on the projector; a clean screen recording + screenshots as the fallback artifact.
+- **Inputs:** C5 telemetry from B's extractor (fields + transport agreed up front); frames or state from A; NemoClaw control UI at `:8080`.
+- **Outputs:** the dashboard on the projector with NemoClaw UI visible; a clean screen recording + screenshots as the fallback artifact.
 
 ### Step-by-step workflow
 1. Freeze C5 fields and transport with B.
-2. Build the layout (cell view | dual latency panels | action stream | stats) against **mock** fast/slow data — rehearse the story with no GPU.
-3. Wire to B's live feed; add a **replay mode** that plays a recorded JSONL.
+2. Build the layout (cell view | NemoClaw UI iframe | dual latency panels | action/tool-call stream | stats) against **mock** fast/slow data — rehearse the story with no GPU.
+3. Wire to B's live telemetry feed; add a **replay mode** that plays a recorded JSONL.
 4. Add the winner visual; show TTFT vs total honestly.
 5. Make it room-legible (huge fonts, high contrast).
-6. On the box: point at real endpoints, serve locally, confirm it opens in the box browser.
+6. On the box: point at real endpoints, set iframe src to `http://localhost:8080`, serve locally, confirm it opens in the box browser.
 7. Capture a clean recording as the worst-case demo.
 
 ### Collaboration
-- **With B:** total dependency on C5 — agree it first, build against mock data immediately.
+- **With B:** total dependency on C5 — agree it first, build against mock data immediately. Also coordinate the tool-call stream format so the action panel shows OpenClaw tool calls, not raw JSON.
 - **With A:** render frames, or fall back to numbers-only if rendering is down.
-- **With D:** coordinate the serve port and that it opens in the box's browser; ship the static-HTML version if the Vite build fights the box.
+- **With D:** coordinate the serve port, NemoClaw UI port (`:8080`), and that everything opens in the box browser; ship the static-HTML fallback if Vite fights the box.
 
 ### Edge cases, limitations, failure handling
+- NemoClaw UI not yet running → show a placeholder panel with "NemoClaw starting..." rather than a broken iframe.
 - No live telemetry yet → mock/replay mode (also the worst-case demo).
 - Frames fail (headless render broken) → numbers-only latency race (still compelling).
-- **Diffusion does NOT visibly win for short outputs** (the real risk) → rely on B's long blocks, report TTFT vs total honestly, and frame as "throughput on real work," not a rigged race.
+- **Diffusion does NOT visibly win for short outputs** → rely on B's long action blocks, report TTFT vs total honestly.
 - Projector/browser issues → screenshot deck + recording.
 - Full Vite build fails on box → static-HTML fallback.
 
@@ -239,7 +240,7 @@ React/TypeScript + Vite + Tailwind + a charting lib (Recharts/Chart.js) for the 
 - Build the static-HTML fallback **in parallel** with the Vite app, not after.
 - Replay mode decouples you from a live box and *is* the worst-case demo — high priority.
 - Add a "cloud (simulated, with network delay)" toggle to dramatize the on-prem/latency thesis.
-- Keep a numbers-only mode that needs zero frames.
+- If NemoClaw's control UI supports theming or embedding params, use them to match the dashboard's visual language.
 
 ---
 
@@ -265,6 +266,7 @@ vLLM via the **`vllm/vllm-openai:gemma4` Docker image** (stock `pip install vllm
 
 ### Inputs and expected outputs
 - **Inputs:** SSD with weights + scripts + saved Docker images + `nemoclaw.sh`; the GB10 (first contact day-of); organizer answers (is NemoClaw pre-installed? is there a monitor? SSH host?).
+- **Current staging status (June 14, 2026):** both model payloads are already staged locally at `/home/dell/factorymind/models/` and on the SSD at `/media/dell/T9/factorymind/models/`, with DiffusionGemma as the intended primary inference payload.
 - **Outputs:** two live OpenAI-compatible endpoints + their C4 info to B; a documented, repeatable bring-up; the demo machine ready.
 
 ### Step-by-step workflow
@@ -302,22 +304,23 @@ vLLM via the **`vllm/vllm-openai:gemma4` Docker image** (stock `pip install vllm
 ## Integration & Demo (cross-cutting)
 
 ### Merge points
-- **A↔B:** `CellPlan` in, state out. Testable the moment both exist (via MockClient + smoke_test).
-- **B↔C:** telemetry JSONL. Testable via mock/replay with no GPU.
-- **D↔B:** endpoint URLs. The last seam to close — and the riskiest, so AR-first.
+- **A↔B:** tool server wraps A's `step()`/`get_state()`. Testable the moment both exist (oracle mode, no NemoClaw needed).
+- **B↔NemoClaw:** tool server URL + agent config. Testable with a mock model endpoint (e.g. `ollama run gemma2:2b`) before real models are up.
+- **B↔C:** C5 telemetry JSONL. Testable via mock/replay with no GPU.
+- **D↔NemoClaw:** model endpoint URLs in `agent_config.yaml`. The last seam to close — AR-first.
 
 ### GB10 first-hour gate (shared rule)
-No one builds features on the box until `curl localhost:8001/v1/models` returns. Until then: A keeps refining sim, B/C keep working against mock + replay. The laptop versions must be fully green before first contact.
+No one builds features on the box until `curl localhost:8001/v1/models` returns **AND** NemoClaw completes one tool call against it. Until then: A keeps refining sim, B keeps refining tool server in oracle mode, C keeps building dashboard against mock telemetry.
 
 ### Demo fallback ladder
 | Tier | What you show | What you say |
 |---|---|---|
-| Best | Side-by-side counter; diffusion keeps the line moving | "Parallel generation for parallel control — fully local on GB10." |
-| Good | AR Gemma 4 loop + sim + latency architecture | "Same always-on local controller; diffusion path ready, AR running today." |
-| Worst | Sim + oracle/replay of recorded outputs | "Control loop and schema proven; model bind pending first box boot." |
+| Best | NemoClaw UI + side-by-side counter; diffusion keeps the line moving | "NemoClaw orchestrates OpenClaw — parallel generation for parallel control, fully local on GB10." |
+| Good | NemoClaw + AR Gemma 4 + sim + latency dashboard | "Same always-on local agent via NemoClaw; diffusion path ready, AR running today." |
+| Worst | Tool server + oracle replay + dashboard recording | "NemoClaw agent and tool schema proven; model bind pending first box boot." |
 
 ### Honesty guardrails (so we never invite a question we can't answer)
-- Pitch "**parallel generation for parallel control, running fully local**" — not "diffusion is fundamentally better."
+- Pitch "**NemoClaw orchestrating parallel generation for parallel control, running fully local**" — not "diffusion is fundamentally better."
 - Drop "4×." Say **"~1.9× tokens/sec, ~3.3× faster end-to-end on longer outputs"**; report **TTFT separately** (diffusion's is higher by design).
 - Never claim a benchmark number you didn't measure on the GB10 that day.
 
@@ -325,7 +328,7 @@ No one builds features on the box until `curl localhost:8001/v1/models` returns.
 1. **DiffusionGemma serving on day-one aarch64 hardware** — mitigated by the serving ladder + AR-first + the 12:00 hard stop.
 2. **Short-output latency race not favoring diffusion** — mitigated by long action blocks (C1) + honest TTFT-vs-total framing.
 3. **Box bring-up eating the build window** — mitigated by docker-saved images, pinned scripts, and the laptop-green-before-first-contact rule.
-4. **Structured-output parse failures under diffusion** — mitigated by guided JSON + retry-once + hold-position.
+4. **NemoClaw tool-call reliability with diffusion** — mitigated by hard schema on `step`, retry-once, then `hold_position`; tool server never raises an unhandled exception.
 
 ---
 
