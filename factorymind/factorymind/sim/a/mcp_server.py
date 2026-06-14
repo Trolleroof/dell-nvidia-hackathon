@@ -206,9 +206,9 @@ def step_cell(plan_json: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-def list_targets() -> list[str]:
+def list_targets() -> dict[str, list[str]]:
     """List valid named targets for move/grip/release commands."""
-    return get_cell_env().list_targets()
+    return {"targets": get_cell_env().list_targets()}
 
 
 # ── Resources (schema references) ─────────────────────────────────────────────
