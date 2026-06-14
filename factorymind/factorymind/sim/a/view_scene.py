@@ -16,14 +16,30 @@ import sys
 from pathlib import Path
 
 
+_REEXEC_GUARD = "FACTORYMIND_MJPYTHON_REEXEC"
+
+
 def _reexec_with_mjpython_on_macos() -> None:
-    """MuJoCo passive viewer on macOS only works under mjpython."""
-    if sys.platform != "darwin" or Path(sys.executable).name == "mjpython":
+    """MuJoCo passive viewer on macOS only works under mjpython.
+
+    Uses an env-var guard rather than checking ``sys.executable`` because
+    mjpython often reports the underlying ``python3`` as ``sys.executable``,
+    which would re-exec forever and spawn endless viewer instances.
+    """
+    if sys.platform != "darwin":
+        return
+    if os.environ.get(_REEXEC_GUARD) == "1":
+        return
+    if Path(sys.executable).name == "mjpython":
         return
     mjpython = Path(sys.executable).with_name("mjpython")
     if not mjpython.is_file():
         return
-    os.execv(str(mjpython), [str(mjpython), *sys.argv])
+    os.environ[_REEXEC_GUARD] = "1"
+    os.execv(
+        str(mjpython),
+        [str(mjpython), "-m", "factorymind.sim.a.view_scene", *sys.argv[1:]],
+    )
 
 
 _reexec_with_mjpython_on_macos()
@@ -45,7 +61,7 @@ from factorymind.sim.a.render import (
 def _run_passive_viewer(env) -> None:
     advance_belt = getattr(env, "_advance_conveyor_belt", None)
     with mujoco.viewer.launch_passive(env.model, env.data) as viewer:
-        viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_SITE] = 0
+        viewer.opt.sitegroup[3] = 0
         viewer.cam.lookat[:] = DASHBOARD_LOOKAT
         viewer.cam.distance = DASHBOARD_DISTANCE
         viewer.cam.elevation = DASHBOARD_ELEVATION
