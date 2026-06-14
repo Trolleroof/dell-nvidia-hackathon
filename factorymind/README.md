@@ -1,6 +1,6 @@
 # FactoryMind — Simulation
 
-Local multi-robot assembly cell sim for the Dell × NVIDIA GB10 hackathon.
+Local multi-robot assembly cell sim for the Dell × NVIDIA GB10 hackathon. Phase 1 exposes structured object state for NemoClaw/DiffusionGemma planning; camera/video/VLA is a Phase 2 extension after the model endpoint is green.
 
 **Workspace:** `factorymind/sim/a/`  
 **Status log:** [`sim/a/ROLE_A_SIMULATION_ENGINEER.md`](factorymind/sim/a/ROLE_A_SIMULATION_ENGINEER.md)  

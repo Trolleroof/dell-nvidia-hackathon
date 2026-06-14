@@ -24,6 +24,10 @@ python -m factorymind.sim.a.run_gb10_check
 python -m factorymind.sim.a.view_scene
 ```
 
+## Scope note
+
+This checklist validates the Phase 1 sim path only: structured C2 state, MuJoCo frames, and NemoClaw tool readiness. Do not spend GB10 bring-up time on camera/video/VLA until AR, NemoClaw, dashboard, and DiffusionGemma are already green.
+
 ## Pass criteria
 
 - `OK [mock]` and `OK [mujoco]` from smoke test

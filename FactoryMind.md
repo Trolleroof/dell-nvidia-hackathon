@@ -12,7 +12,7 @@ A factory floor can't send its data to the cloud and can't tolerate latency, so 
 
 ## Why it wins
 
-- **On-theme and on-brief:** an always-on business agent running locally on the GB10 via **NemoClaw + OpenClaw + OpenShell** — the required stack is the demo, not a footnote. No cloud round-trip; data stays on-prem; the agent harness is exactly what the sponsors built.
+- **On-theme and on-brief:** an always-on business agent running locally on the GB10 via **NemoClaw only** — the required stack is the demo, not a footnote. No cloud round-trip; data stays on-prem; the agent harness is exactly what the sponsors built.
 - **Architecturally honest:** DiffusionGemma generates a whole block of tokens *in parallel* per pass, instead of one token at a time. We frame each robot action plan as a structured block — all N robots' next moves emitted in a single parallel pass. Parallel generation for parallel control.
 - **Visible proof, not a research claim:** the demo runs a side-by-side latency counter — DiffusionGemma controller vs. a standard autoregressive Gemma 4 controller driving the same cell, both orchestrated by NemoClaw. When the diffusion one keeps the line moving while the AR one stutters, the clock makes the argument. NemoClaw's own control UI is embedded in the dashboard so judges see the agent thinking in real time.
 
@@ -20,23 +20,26 @@ A factory floor can't send its data to the cloud and can't tolerate latency, so 
 
 ## How it works
 
-**NemoClaw orchestrates OpenClaw** as the always-on agent harness — the required stack is the core, not a layer on top.
+**NemoClaw is the always-on agent harness** — the required stack is the core, not a layer on top.
 
-1. **NemoClaw starts OpenClaw** in an OpenShell sandbox, configured with the local model endpoint and the sim's tool server URL
-2. **Read** — OpenClaw calls the `get_state` tool → sim returns current cell state
-3. **Plan** — OpenClaw prompts the local model with the state + tool schema; model returns a `CellPlan` as a tool call
-4. **Validate** — the `step` tool enforces the hard schema; bad output → OpenClaw reprompts once; second failure → `hold_position` tool. Loop never blocks.
+1. **NemoClaw starts the agent session**, configured with the local model endpoint and the sim's tool server URL
+2. **Read** — NemoClaw calls the `get_state` tool → sim returns current cell state
+3. **Plan** — NemoClaw prompts the local model with the state + tool schema; model returns a `CellPlan` as a tool call
+4. **Validate** — the `step` tool enforces the hard schema; bad output → NemoClaw reprompts once; second failure → `hold_position` tool. Loop never blocks.
 5. **Step** — sim advances; events emit (pick success, collision, task complete)
-6. **Repeat** — NemoClaw keeps the OpenClaw agent loop running, always-on
+6. **Repeat** — NemoClaw keeps the agent loop running, always-on
 7. **Render** — the frontend dashboard **embeds NemoClaw's control UI (`:8080`)** alongside the live latency race
 
-Multimodal input: include a camera frame in the `get_state` tool response ("bin empty," "part misaligned") and OpenClaw replans on the next pass.
+Phase 1 task input: the user can give text like "sort the green boxes," and the sim exposes structured object state (ids, colors, positions, locations) through `get_state`. DiffusionGemma plans over that symbolic state; NemoClaw calls the tools.
+
+Phase 2/ambitious VLA: after DiffusionGemma is running reliably, add MuJoCo camera frames or video plus a perception/VLA layer. Do not make this part of the critical path.
 
 ## Stack
 
-- **Agent harness (central):** NemoClaw v0.0.55 + OpenClaw + OpenShell — **installed and running on this box**. OpenClaw is the always-on agent; NemoClaw orchestrates it; OpenShell sandboxes it.
-- **Tool server (B):** Python + FastAPI — exposes `get_state`, `step`, `hold_position` to OpenClaw. Schema-validates every `CellPlan` before touching the sim.
-- **Model:** DiffusionGemma `nvidia/diffusiongemma-26B-A4B-it-NVFP4` (~18 GB) served at `:8000`; NemoClaw points OpenClaw at it.
+- **Agent harness (central):** NemoClaw v0.0.55 — **installed and running on this box**. NemoClaw owns the always-on loop and is the only planned orchestration layer.
+- **Tool server (B):** Python + FastAPI — exposes `get_state`, `step`, `hold_position` to NemoClaw. Schema-validates every `CellPlan` before touching the sim.
+- **Task/state input:** Phase 1 uses text instructions plus ground-truth sim state, including object attributes like color for tasks such as "sort green boxes."
+- **Model:** DiffusionGemma `nvidia/diffusiongemma-26B-A4B-it-NVFP4` (~18 GB) served at `:8000`; NemoClaw points at it.
 - **Model staging status (June 14, 2026):** DiffusionGemma weights are already staged locally at `/home/dell/factorymind/models/diffusiongemma` and on the SSD at `/media/dell/T9/factorymind/models/diffusiongemma`; Gemma 4 AR is staged in the matching `gemma4-ar` paths as the fallback baseline.
 - **Fallback model:** Gemma 4 AR at `:8001` — same NemoClaw loop, same tools, loses the diffusion speed story but keeps the whole demo.
 - **Sim:** MuJoCo (PyBullet fallback) — 2 robot arms, one pick-and-place task. Use an existing model; do not build physics.
@@ -48,7 +51,7 @@ Multimodal input: include a camera frame in the `get_state` tool response ("bin 
 We do **not** have SSH or physical access to the Dell Pro Max / GB10 ahead of time. That means:
 
 - We **cannot** validate DiffusionGemma, vLLM, or NemoClaw on the actual box early.
-- We **can** build and fully test everything that doesn't need GB10 CUDA: sim, JSON schema, control loop, latency UI, install scripts.
+- We **can** build and fully test everything that doesn't need GB10 CUDA: sim, JSON schema, NemoClaw mock loop, latency UI, install scripts.
 - **First contact with the box = install + debug hour.** Plan the demo so it still ships if that hour goes badly.
 
 > Treat the Mac as the **factory blueprint**. Treat hackathon morning as **turning the machines on for the first time**.
@@ -56,38 +59,45 @@ We do **not** have SSH or physical access to the Dell Pro Max / GB10 ahead of ti
 ## Scope guardrails (so it ships 10:00 → 18:00)
 
 - 2 robot arms, **one** assembly task. One cell, not a factory. (Drop the third arm unless everything else is green by 15:00.)
-- **Ship order:** (1) sim tool server + NemoClaw agent with mock model → (2) same NemoClaw loop on box with AR Gemma 4 → (3) side-by-side latency counter with NemoClaw UI embedded → (4) DiffusionGemma hero path if time.
+- **Ship order:** (1) sim tool server + NemoClaw agent with mock endpoint → (2) same NemoClaw loop on box with AR Gemma 4 → (3) side-by-side latency counter with NemoClaw UI embedded → (4) DiffusionGemma hero path if time.
 - Constrain model output to a tight JSON schema; parse hard. Reliability > cleverness.
 - **Primary fallback is the plan, not a panic button:** same loop on standard AR Gemma 4. Demo still works; we lose the diffusion speed story, not the whole project.
-- **No camera / multimodal** unless steps 1–3 are done on the box by 14:00.
+- **No camera/video/VLA in the critical path.** Phase 1 is text + structured sim state. Phase 2 starts only after AR, NemoClaw, dashboard, and DiffusionGemma are green.
 
 ## Critical risks (revised for no pre-access)
 
 - **ARM64 Linux, not Mac.** DGX OS is Ubuntu on `aarch64`. Do not copy Mac `pip` packages or binaries to the box. Only copy **source code, model weights, and shell scripts**; install Python deps *on the box* with `pip install`.
 - **DiffusionGemma is day-one unknown.** Without the box, we can't pre-test the diffusion sampler. Write `scripts/box_setup.sh` now; run it first thing on the GB10. If DiffusionGemma fails by 12:00, **stop debugging it** and demo AR Gemma 4 + the architecture story.
-- **Install time eats the hackathon.** Assume 60–90 minutes of pure setup on first SSH. No feature work until `curl localhost:8000/v1/models` (or Ollama equivalent) succeeds.
+- **Install time eats the hackathon.** Assume 60-90 minutes of pure setup on first SSH. No feature work until `curl localhost:8001/v1/models` succeeds and NemoClaw can make one tool call.
 - **Display for the demo.** SSH X-forwarding is laggy. Plug a monitor into the box, or render sim frames to a local HTML dashboard the judges open in a browser on the box.
 
 ## Two-phase workflow
 
 ### Phase A — on your Mac (now → night before)
 
-**Goal:** arrive with a repo that runs end-to-end against a **mock** OpenAI-compatible API. Zero GB10 required.
+**Goal:** arrive with a repo that runs end-to-end against a **mock endpoint through NemoClaw**. Zero GB10 required.
 
-1. **Sim + control loop** — PyBullet, 2 arms, one pick-and-place task, headless OK.
-2. **Hard JSON schema** — Pydantic model for `{ "robots": [{ "id", "action", "target" }] }`; reject bad output, retry once, then hold position.
+1. **Sim + NemoClaw loop** — PyBullet, 2 arms, one pick-and-place task, headless OK.
+2. **Hard JSON schema** — Pydantic model for `CellPlan`; reject bad output, retry once, then hold position. Include structured object attributes in state so text tasks like "sort green boxes" can be planned without camera perception.
 3. **Latency counter UI** — same dashboard code; on Mac, feed it fake timings or two mock endpoints with artificial delay (fast vs slow) so the *demo narrative* is rehearsed.
-4. **`LLMClient` abstraction** — one interface, two backends:
-   - `MockClient` — fixed JSON responses (Mac dev + CI)
-   - `OpenAICompatClient(base_url=...)` — swap in real box URLs day-of
+4. **NemoClaw config profiles** — one NemoClaw path, three endpoint profiles:
+   - `mock` — fixed local responses for Mac dev + CI
+   - `ar` — `AR_URL=http://localhost:8001/v1`
+   - `diffusion` — `DIFFUSION_URL=http://localhost:8000/v1`
 5. **Install scripts (untested on real HW, but written)** — `scripts/box_setup.sh`, `scripts/start_models.sh`, `scripts/run_demo.sh`. Document every command; no manual steps from memory.
 6. **Hard drive staging** — download model weights + project onto an external SSD at home. Copy onto the GB10 at the venue (see below). Do **not** copy Mac Python packages.
+
+## Phase 2/Ambitious VLA Path
+
+Only start this after the core loop is green: NemoClaw can call tools, AR works on `:8001`, DiffusionGemma works on `:8000`, and the dashboard is live. The VLA path adds MuJoCo camera frames or video, a perception/VLA step that identifies objects such as green boxes, and then feeds the resulting object list back into the same NemoClaw tool loop. If DiffusionGemma video input is not proven on the box, use a separate detector/vision model and keep DiffusionGemma as the text planner.
+
+Do not pitch Phase 2 as shipped unless it is actually running. The shipped demo remains text instruction + structured sim state + NemoClaw tools.
 
 ## Hard drive plan (download at home → plug into GB10)
 
 **Yes — this is the right move.** Venue Wi‑Fi is unreliable for 30–40 GB. Download everything at home on fast internet, bring the drive, copy to the box in minutes.
 
-Think of the drive as a **pre-loaded ammo crate**: the bullets (weights) travel with you; the gun (vLLM/Ollama) still gets assembled on the GB10.
+Think of the drive as a **pre-loaded ammo crate**: the bullets (weights) travel with you; the gun (vLLM) still gets assembled on the GB10.
 
 ### What to download (exact targets)
 
@@ -204,7 +214,7 @@ Set in your app: `DIFFUSION_URL=http://localhost:8000/v1`, `AR_URL=http://localh
 
 | On the drive ✅ | Still install on GB10 ❌ |
 |-----------------|-------------------------|
-| Model weight files | vLLM / Ollama / NemoClaw |
+| Model weight files | vLLM / NemoClaw |
 | Your Python source | `pip install -r requirements.txt` |
 | Shell scripts | CUDA-aware runtime (first `pip install vllm` may compile) |
 | Offline copy of `nemoclaw.sh` | Docker, `nemoclaw onboard` |
@@ -227,7 +237,7 @@ Set in your app: `DIFFUSION_URL=http://localhost:8000/v1`, `AR_URL=http://localh
 python -m venv .venv && source .venv/bin/activate
 pip install pybullet numpy pydantic openai
 python -m factorymind.sim.smoke_test          # sim loads, arms move
-python -m factorymind.agent.run --mock        # full loop, mock LLM
+nemoclaw run --config nemoclaw/agent_config.mock.yaml   # full loop, mock endpoint
 python -m factorymind.demo.latency_dashboard  # counter UI with fake timings
 ```
 
@@ -257,7 +267,7 @@ tmux new -s demo
 # repo already at ~/factorymind/ if you rsync'd from drive
 cd ~/factorymind && python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python -m factorymind.agent.run --base-url http://localhost:8001/v1
+nemoclaw run --config nemoclaw/agent_config.ar.yaml
 
 # Only if AR loop works — diffusion from pre-staged weights on :8000
 ./scripts/start_models.sh --model-dir ~/factorymind/models/diffusiongemma --port 8000 --diffusion
@@ -270,9 +280,9 @@ python -m factorymind.agent.run --base-url http://localhost:8001/v1
 **Mac — build & test**
 
 - [ ] Sim runs headless; 2 arms complete one task
-- [ ] Control loop runs with `--mock`; JSON parse + retry logic tested
+- [ ] NemoClaw mock loop runs; JSON parse + retry logic tested
 - [ ] Latency dashboard runs with mock fast/slow backends
-- [ ] `LLMClient` abstraction; no hardcoded URLs in business logic
+- [ ] NemoClaw config profiles; no hardcoded URLs in business logic
 - [ ] `scripts/box_setup.sh`, `start_models.sh`, `run_demo.sh` written and reviewed
 - [ ] `requirements.txt` pinned (PyBullet, pydantic, openai client only — no CUDA libs)
 
@@ -303,7 +313,7 @@ python -m factorymind.agent.run --base-url http://localhost:8001/v1
 |-----------|---------------|--------------|
 | **Best case** | Side-by-side counter; diffusion keeps line moving | "Parallel generation for parallel control — fully local on GB10." |
 | **Good case** | AR Gemma 4 loop + sim + latency architecture | "Same always-on local controller; diffusion path ready, AR running today." |
-| **Worst case** | Sim + mock replay of recorded model outputs | "Control loop and schema proven; model bind pending first box boot." |
+| **Worst case** | NemoClaw + mock endpoint + replay dashboard | "NemoClaw agent and schema proven; model bind pending first box boot." |
 
 Never claim benchmark numbers you didn't measure on the GB10 that day.
 

@@ -23,6 +23,8 @@ Append a changelog entry whenever you ship. Edit only under `sim/a/`.
 | Oracle replay frames | ✅ 13 PNGs in `frames/replay/` |
 | Demo pipeline | ✅ `run_demo.py` |
 | GB10 headless guide | ✅ `GB10_CHECKLIST.md` |
+| Phase 1 task state | ✅ ground-truth sim state; extend with object color labels for sorting |
+| Phase 2 VLA/video | ⏳ blocked until DiffusionGemma endpoint is green |
 
 **Backend:** `mock` (default) · `FACTORYMIND_SIM_BACKEND=mujoco` for physics + frames
 
@@ -43,6 +45,8 @@ env.render_rgb()          # → H×W×3 uint8 array
 ```
 
 **Named targets:** `home`, `bin_a`, `bin_b`, `station_1`, `station_2`, `part_1`, `part_2`, `part_3`
+
+**Phase 1 planning contract:** NemoClaw/DiffusionGemma should plan from text plus structured sim state. For tasks like "sort green boxes," expose object color/type metadata in C2 state. Do not block the sim on camera/video perception; VLA is Phase 2 after DiffusionGemma works on the box.
 
 ---
 

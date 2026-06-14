@@ -26,6 +26,10 @@ python -m factorymind.sim.a.smoke_test
 
 MuJoCo: `export FACTORYMIND_SIM_BACKEND=mujoco`
 
+## Planning Scope
+
+Phase 1 planning uses text instructions plus structured sim state. For example, "sort green boxes" should be represented by object metadata in `get_state()`, not by camera perception. Camera/video/VLA belongs to Phase 2 after DiffusionGemma is running.
+
 ## API
 
 ```python

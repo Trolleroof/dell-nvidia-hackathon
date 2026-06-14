@@ -51,6 +51,10 @@ python -m factorymind.sim.a.smoke_test
 python -m factorymind.sim.a.render_frame
 ```
 
+## Planning Scope
+
+Phase 1 uses structured C2 state for planning, including object metadata such as color for sorting tasks. Rendered frames are for the dashboard first. Camera/video/VLA is Phase 2, gated behind a working DiffusionGemma endpoint.
+
 ## Integration entry point
 
 ```python
