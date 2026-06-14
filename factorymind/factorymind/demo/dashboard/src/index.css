@@ -2,8 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ════════════════════════════════════════════════════════════════════════
+   MINIMALIST MONOCHROME — dark base
+   Black is the canvas. White is the accent. Emphasis = inversion.
+   No color. No radius. No shadows. Lines, serifs, and negative space.
+   ════════════════════════════════════════════════════════════════════════ */
+
 :root {
   color-scheme: dark;
+
+  --background: #000000;
+  --foreground: #ffffff;
+  --muted: #0a0a0a; /* near-black subtle panel */
+  --muted-foreground: #a3a3a3; /* gray secondary text */
+  --faint: #525252; /* tertiary / placeholder gray */
+  --accent: #ffffff; /* white IS the accent */
+  --accent-foreground: #000000; /* black on white (inversion) */
+  --border: #ffffff; /* the line system */
+  --border-light: #2a2a2a; /* subtle hairline dividers */
+  --card: #000000;
+  --card-foreground: #ffffff;
+  --ring: #ffffff;
 }
 
 html,
@@ -14,107 +33,170 @@ body,
 
 body {
   margin: 0;
-  background:
-    radial-gradient(1200px 600px at 12% -10%, rgba(10, 143, 220, 0.1), transparent 60%),
-    radial-gradient(1200px 600px at 92% -10%, rgba(118, 185, 0, 0.1), transparent 60%),
-    #000;
-  color: #eef3f8;
-  font-family: "Segoe UI", Inter, system-ui, sans-serif;
-  letter-spacing: 0.2px;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 16px;
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* faint diagonal-stripe brand texture */
+/* Layered textures — required to keep the dark plane from going flat.
+   Horizontal white hairlines (paper grain) + fractal noise, both whisper-faint. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  opacity: 0.05;
-  background-image: repeating-linear-gradient(135deg, #fff 0 2px, transparent 2px 14px);
-  -webkit-mask-image: linear-gradient(to bottom, #000, transparent 40%);
-  mask-image: linear-gradient(to bottom, #000, transparent 40%);
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 1px,
+    #ffffff 1px,
+    #ffffff 2px
+  );
+  background-size: 100% 4px;
+  opacity: 0.025;
 }
 
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+::selection {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+/* ── Reusable surface vocabulary ─────────────────────────────────────────── */
 @layer components {
   .card {
-    @apply rounded-2xl border border-line p-4 relative overflow-hidden;
-    background: linear-gradient(180deg, #11151c, #0c0f14);
+    @apply border border-border p-5 relative overflow-hidden;
+    background: var(--card);
   }
   .card-title {
-    @apply m-0 mb-3 text-[12.5px] font-extrabold tracking-[2px] uppercase text-dim flex items-center gap-2.5;
+    @apply m-0 mb-4 font-mono text-[11px] font-semibold tracking-[0.2em] uppercase text-muted-foreground flex items-center gap-3;
   }
+  /* A registration tick — a thin white rule, the section's punctuation. */
   .tick {
-    @apply w-1 h-4 rounded-sm bg-faint;
+    @apply w-[2px] h-4 bg-foreground;
   }
   .stat {
-    @apply rounded-[10px] border border-lineSoft p-3;
-    background: #11151c;
+    @apply border border-border-light p-3;
+    background: var(--background);
   }
   .stat-k {
-    @apply text-[10.5px] tracking-[1px] uppercase text-faint;
+    @apply font-mono text-[10px] tracking-[0.15em] uppercase text-faint;
   }
   .stat-v {
-    @apply text-2xl font-extrabold tabular-nums mt-0.5;
+    @apply text-2xl font-display font-semibold tabular-nums mt-1;
   }
   .pill {
-    @apply inline-block px-[7px] py-px rounded-full text-[10px] font-extrabold tracking-[0.5px] uppercase;
+    @apply inline-block border border-border px-2 py-px font-mono text-[10px] font-semibold tracking-[0.12em] uppercase;
   }
+  /* Outline button → fills on hover (instant). */
   .btn {
-    @apply rounded-[10px] border border-line px-3.5 py-2 text-[12.5px] font-bold tracking-[0.6px] uppercase cursor-pointer;
-    background: #0c0f14;
-    color: #eef3f8;
+    @apply border border-border px-4 py-2 font-mono text-[11px] font-semibold tracking-[0.12em] uppercase cursor-pointer transition-none;
+    background: transparent;
+    color: var(--foreground);
   }
   .btn:hover {
-    border-color: #2b3a4a;
+    background: var(--foreground);
+    color: var(--background);
+  }
+  .btn:focus-visible {
+    outline: 3px solid var(--foreground);
+    outline-offset: 3px;
   }
 }
 
+/* ════════════════════════════════════════════════════════════════════════
+   Agent console
+   ════════════════════════════════════════════════════════════════════════ */
+
 .agent-shell {
-  margin-top: 18px;
+  margin-top: 0;
 }
+
+/* Editorial section eyebrow — mono caps with a leading rule. */
+.agent-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 28px 0 18px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.agent-eyebrow::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-light);
+}
+
 .agent-status-inline {
   margin-left: auto;
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
-  padding: 8px 12px;
-  border: 1px solid rgba(28, 36, 48, 0.9);
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.28);
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  background: var(--background);
 }
 .agent-status-inline strong {
-  font-size: 12px;
-  letter-spacing: 0.4px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 .agent-status-inline span:last-child {
-  color: #8a98a8;
-  font-size: 12px;
+  color: var(--muted-foreground);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
 }
+/* A filled white registration square — running. Paused = hollow (set inline). */
 .agent-status-dot {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   flex: 0 0 auto;
-  border-radius: 999px;
-  background: #76b900;
-  box-shadow: 0 0 0 8px rgba(118, 185, 0, 0.12), 0 0 28px #76b900;
+  background: var(--foreground);
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
 }
+.agent-status-dot.is-idle {
+  background: transparent;
+}
+
 .agent-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(380px, 0.65fr);
-  gap: 18px;
+  gap: 0;
   align-items: start;
+  border: 1px solid var(--border);
 }
-.agent-sim-stack,
+.agent-sim-stack {
+  padding: 22px;
+  border-right: 1px solid var(--border);
+  background: var(--background);
+}
 .agent-chat-card {
-  border: 1px solid rgba(28, 36, 48, 0.9);
-  border-radius: 24px;
-  padding: 14px;
-  background:
-    linear-gradient(180deg, rgba(17, 21, 28, 0.92), rgba(5, 8, 12, 0.92)),
-    radial-gradient(580px 260px at 20% 0%, rgba(10, 143, 220, 0.1), transparent 60%);
+  padding: 22px;
+  background: var(--background);
 }
+
 .agent-control-strip,
 .agent-speed-row {
   display: flex;
@@ -123,14 +205,15 @@ body::before {
   gap: 10px;
 }
 .agent-control-strip {
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
+
+/* Mode tabs — outlined segmented control, active tab inverts. */
 .agent-mode-tabs {
   display: inline-flex;
   overflow: hidden;
-  border: 1px solid #1c2430;
-  border-radius: 14px;
-  background: #080c10;
+  border: 1px solid var(--border);
+  background: var(--background);
 }
 .agent-mode-tabs button,
 .agent-primary,
@@ -138,52 +221,79 @@ body::before {
 .agent-composer button {
   border: 0;
   cursor: pointer;
-  color: #eef3f8;
-  font-weight: 900;
-  letter-spacing: 0.8px;
+  color: var(--foreground);
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
+  font-size: 12px;
+  transition: none;
 }
 .agent-mode-tabs button {
-  padding: 10px 12px;
+  padding: 10px 16px;
   background: transparent;
-  color: #8a98a8;
-  border-right: 1px solid #1c2430;
+  color: var(--muted-foreground);
+  border-right: 1px solid var(--border);
 }
 .agent-mode-tabs button:last-child {
   border-right: 0;
 }
 .agent-mode-tabs button.is-active {
-  color: #95e600;
-  background: linear-gradient(180deg, rgba(118, 185, 0, 0.22), transparent);
+  color: var(--accent-foreground);
+  background: var(--foreground);
 }
+
+/* Primary = inverted solid (white/black); hover hollows out. */
 .agent-primary,
 .agent-secondary {
-  border-radius: 13px;
-  padding: 10px 13px;
+  padding: 11px 18px;
 }
 .agent-primary {
-  background: linear-gradient(135deg, #76b900, #0a8fdc);
-  color: #021006;
+  background: var(--foreground);
+  color: var(--accent-foreground);
 }
+.agent-primary:hover {
+  background: transparent;
+  color: var(--foreground);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+/* Secondary = outline; hover fills. */
 .agent-secondary {
-  border: 1px solid #1c2430;
-  background: #0c0f14;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
 }
+.agent-secondary:hover {
+  background: var(--foreground);
+  color: var(--accent-foreground);
+}
+
+.agent-mode-tabs button:focus-visible,
+.agent-primary:focus-visible,
+.agent-secondary:focus-visible,
+.agent-composer button:focus-visible {
+  outline: 3px solid var(--foreground);
+  outline-offset: 3px;
+}
+
 .agent-speed-row {
-  margin-bottom: 14px;
-  color: #8a98a8;
-  font-size: 12px;
-  font-weight: 800;
+  margin-bottom: 16px;
+  color: var(--muted-foreground);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 .agent-speed-row label {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 12px;
 }
 .agent-speed-row input[type="range"] {
-  accent-color: #76b900;
+  accent-color: var(--foreground);
+  height: 2px;
 }
+
 .agent-sim-frame .card {
   min-height: 400px;
 }
@@ -192,94 +302,136 @@ body::before {
   height: min(54vh, 520px);
   min-height: 340px;
 }
+
 .agent-chat-card {
   position: sticky;
   top: 16px;
-  min-height: calc(100vh - 160px);
+  min-height: calc(100vh - 200px);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 .agent-chat-header {
-  border-bottom: 1px solid #1c2430;
-  padding-bottom: 12px;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 14px;
 }
 .agent-chat-header strong {
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+.agent-chat-header .agent-chat-sub {
+  display: block;
+  margin-top: 4px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
+  color: var(--muted-foreground);
 }
 .agent-thread {
   flex: 1;
   min-height: 230px;
-  max-height: 36vh;
+  max-height: 38vh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 9px;
-  padding-right: 2px;
+  gap: 12px;
+  padding-right: 4px;
 }
+.agent-thread:empty::before {
+  content: "Awaiting command.";
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* Speakers encoded by FORM, not hue: operator inverts, agent outlines. */
 .agent-message {
   width: 88%;
-  border: 1px solid #1c2430;
-  border-radius: 16px;
-  padding: 10px 12px;
-  background: #0c0f14;
+  padding: 11px 14px;
 }
 .agent-message.operator {
   align-self: flex-end;
-  border-color: rgba(10, 143, 220, 0.45);
-  background: rgba(10, 143, 220, 0.11);
+  background: var(--foreground);
+  color: var(--accent-foreground);
 }
 .agent-message.agent {
-  border-color: rgba(118, 185, 0, 0.36);
-  background: rgba(118, 185, 0, 0.08);
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--border);
 }
 .agent-message span {
   display: block;
-  color: #8a98a8;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 1px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
+  opacity: 0.7;
+}
+.agent-message.operator span {
+  color: var(--accent-foreground);
+}
+.agent-message.agent span {
+  color: var(--muted-foreground);
 }
 .agent-message p {
-  margin: 5px 0;
-  color: #eef3f8;
-  font-size: 13px;
-  line-height: 1.5;
+  margin: 6px 0 0;
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 14px;
+  line-height: 1.55;
 }
+
 .agent-composer {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 .agent-composer textarea {
   width: 100%;
   resize: vertical;
-  border: 1px solid #1c2430;
-  border-radius: 16px;
-  padding: 12px;
-  background: #05080c;
-  color: #eef3f8;
-  font: inherit;
-  line-height: 1.5;
+  border: 0;
+  border-bottom: 2px solid var(--border);
+  padding: 12px 2px;
+  background: transparent;
+  color: var(--foreground);
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 15px;
+  line-height: 1.55;
   outline: none;
 }
-.agent-composer textarea:focus {
-  border-color: rgba(118, 185, 0, 0.58);
-  box-shadow: 0 0 0 3px rgba(118, 185, 0, 0.12);
+.agent-composer textarea::placeholder {
+  color: var(--faint);
+  font-style: italic;
 }
+.agent-composer textarea:focus,
+.agent-composer textarea:focus-visible {
+  border-bottom-width: 4px;
+}
+/* Send = inverted solid with an arrow; hover hollows out. */
 .agent-composer button {
-  border-radius: 14px;
-  padding: 12px;
-  background: #95e600;
-  color: #051005;
+  padding: 13px;
+  background: var(--foreground);
+  color: var(--accent-foreground);
+}
+.agent-composer button:hover {
+  background: transparent;
+  color: var(--foreground);
+  box-shadow: inset 0 0 0 1px var(--border);
 }
 
 @media (max-width: 1180px) {
   .agent-grid {
     grid-template-columns: 1fr;
+  }
+  .agent-sim-stack {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
   }
   .agent-chat-card {
     position: static;
@@ -301,7 +453,7 @@ body::before {
   }
   .agent-mode-tabs button {
     flex: 1;
-    padding-inline: 8px;
+    padding-inline: 10px;
   }
   .agent-sim-frame img,
   .agent-sim-frame svg {
@@ -314,21 +466,25 @@ body::before {
   width: 8px;
   height: 8px;
 }
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
 ::-webkit-scrollbar-thumb {
-  background: #1c2430;
-  border-radius: 8px;
+  background: var(--border-light);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
 }
 
+/* Motion: minimal, instant. A 120ms fade is the only flourish. */
 @keyframes slidein {
   from {
     opacity: 0;
-    transform: translateY(-6px);
   }
   to {
     opacity: 1;
-    transform: none;
   }
 }
 .animate-slidein {
-  animation: slidein 0.25s ease;
+  animation: slidein 0.12s linear;
 }

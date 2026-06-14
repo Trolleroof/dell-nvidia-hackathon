@@ -20,16 +20,17 @@ interface SimPart {
   color: string;
 }
 
-const BINS: [string, number, number, string][] = [
-  ["bin_a", 415, 70, "#76b900"],
-  ["bin_b", 415, 130, "#38b6ff"],
-  ["station_1", 415, 190, "#b06bff"],
+const BINS: [string, number, number][] = [
+  ["bin_a", 415, 70],
+  ["bin_b", 415, 130],
+  ["station_1", 415, 190],
 ];
 
+// Monochrome: part identity reads from labels + fill treatment, never hue.
 const PART_COLORS: Record<string, string> = {
-  part_1: "#ffb02e",
-  part_2: "#38b6ff",
-  part_3: "#76b900",
+  part_1: "#ffffff",
+  part_2: "#ffffff",
+  part_3: "#ffffff",
 };
 
 const ZONES = ["bin_a", "bin_b", "station_1", "station_2"];
@@ -180,106 +181,115 @@ export function CellView({
       <h2 className="card-title">
         <span className="tick" />
         Assembly Cell · 2 Arms
-        {showFrame && <span className="ml-auto pill text-nvidia bg-[rgba(118,185,0,.12)]">MuJoCo</span>}
-        {!showFrame && animatedFallback && <span className="ml-auto pill text-dell-bright bg-[rgba(10,143,220,.14)]">Mock live</span>}
+        {showFrame && <span className="ml-auto pill bg-foreground text-background">MuJoCo</span>}
+        {!showFrame && animatedFallback && <span className="ml-auto pill">Mock live</span>}
       </h2>
       {showFrame && frameSrc ? (
-        <div className="relative">
+        <div className="group relative border border-foreground transition-all duration-100 hover:border-2">
           <img
             src={frameSrc}
             alt={`MuJoCo sim frame step ${effectiveStep}`}
-            className="w-full h-[300px] rounded-xl object-cover border border-line bg-[#05080c]"
+            className="block w-full h-[300px] object-cover bg-background"
             onError={() => setFailedFrameSrc(frameSrc)}
           />
-          <div className="absolute left-3 top-3 rounded-full border border-[rgba(118,185,0,.45)] bg-black/60 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[1px] text-nvidia-bright">
-            {liveMujocoFrame ? "Live MuJoCo" : "MuJoCo frame"}
+          <div className="absolute left-0 top-0 bg-foreground px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-background">
+            {liveMujocoFrame ? "Live · MuJoCo" : "MuJoCo Frame"}
           </div>
         </div>
       ) : (
       <svg
         viewBox="0 0 520 300"
-        className="w-full h-[300px] rounded-xl"
-        style={{ background: "radial-gradient(600px 300px at 50% 0%, #0d141c, #05080c)" }}
+        className="w-full h-[300px] border border-border-light bg-background"
       >
-        <rect x={60} y={248} width={400} height={14} rx={4} fill="#0e1620" stroke="#1c2430" />
-        <line x1={40} y1={262} x2={480} y2={262} stroke="#162030" strokeWidth={2} />
-        {BINS.map(([name, x, y, c]) => (
+        {/* conveyor rule */}
+        <rect x={60} y={248} width={400} height={14} fill="#000000" stroke="#ffffff" strokeOpacity={0.3} />
+        <line x1={40} y1={262} x2={480} y2={262} stroke="#ffffff" strokeOpacity={0.2} strokeWidth={2} />
+        {BINS.map(([name, x, y]) => (
           <g key={name}>
-            <rect x={x} y={y} width={78} height={44} rx={6} fill="rgba(255,255,255,.02)" stroke={c} strokeOpacity={0.5} />
-            <text x={x + 39} y={y + 27} fill={c} fontSize={11} textAnchor="middle" fontWeight={700}>{name}</text>
+            <rect x={x} y={y} width={78} height={44} fill="none" stroke="#ffffff" strokeOpacity={0.55} />
+            <text x={x + 39} y={y + 27} fill="#ffffff" fontSize={10} textAnchor="middle"
+              fontFamily="'JetBrains Mono', monospace" letterSpacing={1} fontWeight={600}>{name}</text>
           </g>
         ))}
         {arms.map((a, i) => {
-          const c = i === 0 ? "#76b900" : "#0a8fdc";
+          const c = "#ffffff";
           const seg1 = 70, seg2 = 58;
           const jx = a.x + Math.sin(a.angle) * seg1;
           const jy = a.base - Math.cos(a.angle) * seg1;
           const handAng = a.angle + (a.grip ? 0.7 : 0.3);
           const hx = jx + Math.sin(handAng) * seg2;
           const hy = jy - Math.cos(handAng) * seg2 * 0.6;
+          const hs = a.grip ? 14 : 10;
           return (
-            <g key={i} style={{ transition: "all .3s ease" }}>
-              <circle cx={a.x} cy={a.base} r={12} fill="#0e1620" stroke={c} strokeWidth={2} />
-              <line x1={a.x} y1={a.base} x2={jx} y2={jy} stroke={c} strokeWidth={7} strokeLinecap="round" />
-              <line x1={jx} y1={jy} x2={hx} y2={hy} stroke={c} strokeWidth={5} strokeLinecap="round" opacity={0.9} />
-              <circle cx={jx} cy={jy} r={5} fill={c} />
-              <circle cx={hx} cy={hy} r={a.grip ? 7 : 5} fill={a.grip ? c : "#0e1620"} stroke={c} strokeWidth={2} />
-              <text x={a.x} y={a.base + 22} fill={c} fontSize={10} textAnchor="middle" fontWeight={700}>r{i}</text>
+            <g key={i} style={{ transition: "all .1s linear" }}>
+              {/* sharp squares, not circles — architectural geometry */}
+              <rect x={a.x - 12} y={a.base - 12} width={24} height={24} fill="#000000" stroke={c} strokeWidth={1.5} />
+              <line x1={a.x} y1={a.base} x2={jx} y2={jy} stroke={c} strokeWidth={6} strokeLinecap="butt" />
+              <line x1={jx} y1={jy} x2={hx} y2={hy} stroke={c} strokeWidth={4} strokeLinecap="butt" opacity={0.9} />
+              <rect x={jx - 4} y={jy - 4} width={8} height={8} fill={c} />
+              <rect x={hx - hs / 2} y={hy - hs / 2} width={hs} height={hs} fill={a.grip ? c : "#000000"} stroke={c} strokeWidth={1.5} />
+              <text x={a.x} y={a.base + 24} fill={c} fontSize={10} textAnchor="middle"
+                fontFamily="'JetBrains Mono', monospace" fontWeight={600}>r{i}</text>
             </g>
           );
         })}
+        {/* placed = solid white, in-flight = hollow outline */}
         {parts.map((p) => (
-          <rect key={p.id} x={p.x - 7} y={p.y - 7} width={14} height={14} rx={3} fill={p.c}
-            opacity={p.placed ? 1 : 0.85} stroke={p.placed ? "#fff" : "none"} strokeOpacity={0.25}
-            style={{ transition: "all .4s ease" }} />
+          <rect key={p.id} x={p.x - 7} y={p.y - 7} width={14} height={14}
+            fill={p.placed ? "#ffffff" : "none"} stroke="#ffffff" strokeWidth={1.5}
+            style={{ transition: "all .1s linear" }} />
         ))}
       </svg>
       )}
 
-      <div className="flex gap-3.5 flex-wrap mt-3 text-xs text-dim">
-        <span>Step <b className="text-text">{effectiveStep}</b></span>
-        <span>Event <b className="text-text">{latest?.sim_event ?? (animatedFallback ? "mock_cycle" : "—")}</b></span>
-        <span>Parts placed <b className="text-text">{placedCount} / 3</b></span>
+      <div className="mt-4 grid grid-cols-3 border-t border-border-light pt-3 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+        <div className="flex flex-col gap-1 pr-3">
+          <span>Step</span>
+          <b className="font-display text-xl font-semibold tabular-nums text-foreground">{effectiveStep}</b>
+        </div>
+        <div className="flex flex-col gap-1 border-l border-border-light px-3">
+          <span>Event</span>
+          <b className="truncate text-[12px] font-semibold normal-case tracking-normal text-foreground">{latest?.sim_event ?? (animatedFallback ? "mock_cycle" : "—")}</b>
+        </div>
+        <div className="flex flex-col gap-1 border-l border-border-light pl-3">
+          <span>Placed</span>
+          <b className="font-display text-xl font-semibold tabular-nums text-foreground">{placedCount} / 3</b>
+        </div>
       </div>
 
       {/* Interactive Part Controls — shown when sim state is available */}
       {simParts.length > 0 && (
-        <div className="mt-3 rounded-xl border border-line/60 p-3 bg-[rgba(255,255,255,.02)]">
-          <div className="text-[10px] font-extrabold uppercase tracking-wider text-dim mb-2.5">
+        <div className="mt-4 border-t-2 border-border pt-4">
+          <div className="mb-3 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             Part Controls — drag to move
           </div>
-          <div className="flex gap-3 items-start">
+          <div className="flex items-start gap-4">
             {/* Draggable part sources */}
-            <div className="flex flex-col gap-1.5 min-w-[110px]">
-              {simParts.map((part) => (
+            <div className="flex min-w-[120px] flex-col gap-1.5">
+              {simParts.map((part, i) => (
                 <div
                   key={part.id}
                   draggable
                   onDragStart={(e) => e.dataTransfer.setData("part_id", part.id)}
-                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg cursor-grab border border-line/50 bg-[#0e1620] hover:bg-[#111820] select-none"
+                  className="group flex cursor-grab select-none items-center gap-2 border border-border bg-background px-2 py-1.5 transition-colors duration-100 hover:bg-foreground hover:text-background"
                   title={`Drag ${part.id} to a zone`}
                 >
-                  <span
-                    className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
-                    style={{ background: part.color }}
-                  />
-                  <span className="text-[11px] font-mono text-text">{part.id}</span>
-                  <span className="text-[9px] text-dim ml-auto truncate">@{part.at}</span>
+                  {/* index square — identity by number, not hue */}
+                  <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center border border-border font-mono text-[9px] font-semibold group-hover:border-background">
+                    {i + 1}
+                  </span>
+                  <span className="font-mono text-[11px] text-foreground group-hover:text-background">{part.id}</span>
+                  <span className="ml-auto truncate font-mono text-[9px] text-muted-foreground group-hover:text-background">@{part.at}</span>
                 </div>
               ))}
             </div>
 
-            <div className="self-center text-dim text-sm px-1">→</div>
+            <div className="self-center px-1 font-mono text-base text-muted-foreground">→</div>
 
-            {/* Drop zones */}
-            <div className="grid grid-cols-2 gap-1.5 flex-1">
+            {/* Drop zones — invert on drag-over (emphasis = inversion) */}
+            <div className="grid flex-1 grid-cols-2 gap-1.5">
               {ZONES.map((zone) => {
-                const zoneColor =
-                  zone === "station_1" || zone === "station_2"
-                    ? "#b06bff"
-                    : zone === "bin_b"
-                    ? "#38b6ff"
-                    : "#76b900";
+                const active = dragOver === zone;
                 return (
                   <div
                     key={zone}
@@ -291,12 +301,11 @@ export function CellView({
                       setDragOver(null);
                       if (partId) handleTeleport(partId, zone);
                     }}
-                    className="px-2 py-2 rounded-lg border text-[10px] font-mono text-center transition-all duration-150 cursor-default"
-                    style={{
-                      borderColor: dragOver === zone ? zoneColor : "rgba(255,255,255,.1)",
-                      background: dragOver === zone ? `${zoneColor}18` : "transparent",
-                      color: dragOver === zone ? zoneColor : "#6b7a8d",
-                    }}
+                    className={`cursor-default border px-2 py-2 text-center font-mono text-[10px] uppercase tracking-[0.1em] transition-colors duration-100 ${
+                      active
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border-light text-muted-foreground"
+                    }`}
                   >
                     {zone}
                   </div>
@@ -305,7 +314,7 @@ export function CellView({
             </div>
           </div>
           {teleporting && (
-            <div className="mt-2 text-[10px] text-dim">Moving part…</div>
+            <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Moving part…</div>
           )}
         </div>
       )}
