@@ -140,15 +140,6 @@ def build_cell_spec() -> mujoco.MjSpec:
         size=[1.2, 1.2, 0.05],
         rgba=[0.32, 0.33, 0.36, 1],
     )
-    wb.add_geom(
-        name="backdrop",
-        type=mujoco.mjtGeom.mjGEOM_BOX,
-        pos=[-0.08, 0.1, 0.58],
-        size=[0.02, 0.82, 0.38],
-        rgba=[0.26, 0.28, 0.32, 1],
-        contype=0,
-        conaffinity=0,
-    )
 
     table = wb.add_body(name="table", pos=[0.5, 0.0, 0.4])
     table.add_geom(
