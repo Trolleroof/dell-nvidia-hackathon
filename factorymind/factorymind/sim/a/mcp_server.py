@@ -27,6 +27,7 @@ from factorymind.sim.a.telemetry_bridge import (
     DIFFUSION_PROFILE,
     append_rows,
     c5_row_for_step,
+    c5_rows_for_step,
     default_telemetry_path,
 )
 
@@ -87,24 +88,21 @@ def _emit_live_telemetry(state: dict[str, Any], plan: CellPlan) -> None:
     """
     global _last_step_ts
     try:
-        now = time.time()
-        measured_ms = int((now - _last_step_ts) * 1000) if _last_step_ts else None
-        _last_step_ts = now
-
+        _last_step_ts = time.time()
         step = state.get("step", 0)
-        row = c5_row_for_step(
-            profile=DIFFUSION_PROFILE,
+        # Emit BOTH model series (DiffusionGemma + AR Gemma) per step so the
+        # dashboard can race them. Latencies are the per-model "projected
+        # on-device" profiles (nvfp4) — a fair model-to-model comparison.
+        # Swap to measured timings once a real model drives the loop.
+        rows = c5_rows_for_step(
             step=step,
             plan=plan,
             events=state.get("events", []),
             done=state.get("done", False),
-            ts=now,
-            frame_url="/sim/latest.png",
         )
-        # Override the synthetic latency with the real measured cadence when known.
-        if measured_ms is not None:
-            row["latency_ms"] = measured_ms
-        append_rows(default_telemetry_path(), [row])
+        for r in rows:
+            r["frame_url"] = "/sim/latest.png"
+        append_rows(default_telemetry_path(), rows)
     except Exception:
         pass
 
@@ -491,6 +489,55 @@ async def teleport_part_route(request):  # type: ignore[no-untyped-def]
     if result.get("ok"):
         _save_live_frame("teleport")
     return JSONResponse(result, headers=_CORS_HEADERS)
+
+
+@mcp.custom_route("/scenario", methods=["POST", "OPTIONS"])
+async def scenario_route(request):  # type: ignore[no-untyped-def]
+    """Switch the cell scenario/task and start a fresh live episode.
+
+    Body: {"scenario": "default|sort_green|misaligned|empty_bin|conveyor_feed"}.
+    """
+    from starlette.responses import JSONResponse
+
+    if request.method == "OPTIONS":
+        return JSONResponse({}, headers=_CORS_HEADERS)
+
+    global _current_task, _last_step_ts
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    scenario = str(body.get("scenario", "default")).strip()
+    valid = ("default", "sort_green", "misaligned", "empty_bin", "conveyor_feed")
+    if scenario not in valid:
+        return JSONResponse(
+            {"ok": False, "error": f"unknown scenario: {scenario}", "valid": list(valid)},
+            headers=_CORS_HEADERS,
+        )
+
+    cfg = replace(get_config(), scenario=scenario, default_seed=0)
+    driver = get_driver()
+    # Swap the env singleton under the driver lock so the render thread never
+    # touches a half-replaced env (mirrors reset_cell).
+    if driver is not None:
+        with driver.lock:
+            cell = reset_cell_env(cfg)
+            cell.reset(0)
+            driver.reset_state()
+    else:
+        cell = reset_cell_env(cfg)
+        cell.reset(0)
+
+    _current_task = TASK_BY_SCENARIO.get(scenario, _current_task)
+    try:
+        default_telemetry_path().write_text("")
+    except Exception:
+        pass
+    _last_step_ts = None
+    _save_live_frame("scenario")
+    return JSONResponse(
+        {"ok": True, "scenario": scenario, "task": _current_task}, headers=_CORS_HEADERS
+    )
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
