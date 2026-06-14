@@ -23,7 +23,7 @@ Append a changelog entry whenever you ship. Edit only under `sim/a/`.
 | Pose lookup (`pose_lookup.py`) | ✅ loads `poses.json` |
 | Pose verify (`verify_poses.py`) | ✅ arm0/+Y and arm1/-Y targets ≤ 5 cm |
 | Offscreen render (`render.py`) | ✅ 1280×720 dashboard camera |
-| Reset scenarios | ✅ `default`, `sort_green`, `misaligned`, `empty_bin` |
+| Reset scenarios | ✅ `default`, `sort_green`, `misaligned`, `empty_bin`, `conveyor_feed` |
 | Oracle replay frames | ✅ 13 PNGs in `frames/replay/` |
 | Demo pipeline | ✅ `run_demo.py` |
 | Dashboard frame contract | ✅ `frames/latest.png` + `latest.json` |
@@ -35,6 +35,8 @@ Append a changelog entry whenever you ship. Edit only under `sim/a/`.
 | `sort_green` scenario | ✅ task-aware oracle (green boxes only) |
 | Misaligned oracle recovery | ✅ per-part approach targets |
 | C5 `frame_url` sync | ✅ `/sim/replay/step_XXXX.png` in telemetry rows |
+| Conveyor belt + blocks | ✅ `conveyor.py` — 3 moving blocks on belt |
+| `conveyor_feed` scenario | ✅ pick at `conveyor_pick` → place `station_1` |
 | GB10 manifest | ✅ `run_gb10_check` → `telemetry/gb10_manifest.json` |
 | Demo telemetry export | ✅ `run_team_feed` → `demo/static/*.jsonl` |
 | Phase 2 VLA/video | ⏳ blocked until DiffusionGemma endpoint is green |
@@ -97,6 +99,12 @@ python -m factorymind.sim.a.serve_team_feed
 - `run_gb10_check` — scenario tests + `telemetry/gb10_manifest.json`.
 - Smoke test covers `misaligned` on mock + MuJoCo.
 - Dashboard `CellView` shows MuJoCo PNG when `frame_url` is present (`serve_team_feed` :8766).
+
+### 2026-06-14 — Conveyor-fed picking (`conveyor_feed`)
+
+- `conveyor_feed` scenario — yellow/blue/green boxes spawn on belt; oracle waits at `conveyor_pick`, grips in order, places at `station_1`.
+- Oracle belt logic — hold at pick station until `part_at_pick_zone()`; mock + MuJoCo belt advance for task parts.
+- `run_team_feed --scenario conveyor_feed` — team demo for assembly-line pick story.
 
 ### 2026-06-14 — Colored boxes + dashboard isolated replay hookup
 

@@ -29,6 +29,12 @@ def _run_mock() -> None:
     placed_mis = sum(1 for p in final_mis["parts"] if p["at"] == "station_1")
     print(f"OK [mock misaligned] — {final_mis['step']} steps, {placed_mis} parts at station_1")
 
+    env_cv = MockCellEnv(num_robots=2, seed=0, scenario="conveyor_feed")
+    final_cv = run_oracle_episode(env_cv)
+    assert final_cv["done"], f"Mock conveyor_feed failed: {final_cv}"
+    placed_cv = sum(1 for p in final_cv["parts"] if p["id"].startswith("part_") and p["at"] == "station_1")
+    print(f"OK [mock conveyor_feed] — {final_cv['step']} steps, {placed_cv} parts at station_1")
+
 
 def _run_mujoco() -> None:
     os.environ["FACTORYMIND_SIM_BACKEND"] = "mujoco"
@@ -53,6 +59,12 @@ def _run_mujoco() -> None:
     assert final_mis["done"], f"MuJoCo misaligned failed: {final_mis}"
     placed_mis = sum(1 for p in final_mis["parts"] if p["at"] == "station_1")
     print(f"OK [mujoco misaligned] — {final_mis['step']} steps, {placed_mis} parts at station_1")
+
+    env_cv = create_cell_env(SimConfig(backend="mujoco", scenario="conveyor_feed", default_seed=0))
+    final_cv = run_oracle_episode(env_cv)
+    assert final_cv["done"], f"MuJoCo conveyor_feed failed: {final_cv}"
+    placed_cv = sum(1 for p in final_cv["parts"] if p["id"].startswith("part_") and p["at"] == "station_1")
+    print(f"OK [mujoco conveyor_feed] — {final_cv['step']} steps, {placed_cv} parts at station_1")
 
 
 def main() -> None:

@@ -20,9 +20,10 @@ from dataclasses import replace
 from factorymind.sim.a.config import get_config
 from factorymind.sim.a.env_factory import get_cell_env, reset_cell_env
 from factorymind.sim.a.frame_export import latest_frame_path, read_latest_frame_meta
+from factorymind.sim.a.part_catalog import TASK_BY_SCENARIO
 from factorymind.sim.a.targets import TARGET_POSES
 
-Scenario = Literal["default", "sort_green", "misaligned", "empty_bin"]
+Scenario = Literal["default", "sort_green", "misaligned", "empty_bin", "conveyor_feed"]
 
 mcp = FastMCP(
     "FactoryMind Sim",
@@ -61,13 +62,17 @@ def get_task() -> dict[str, str]:
 # ── Sim state tools ───────────────────────────────────────────────────────────
 
 @mcp.tool()
-def reset_cell(seed: int = 0) -> dict[str, Any]:
-    """Reset the cell to the initial pick-and-place scenario.
+def reset_cell(seed: int = 0, scenario: Scenario = "default") -> dict[str, Any]:
+    """Reset the cell. scenario: default | sort_green | misaligned | empty_bin | conveyor_feed.
 
     Args:
         seed: Random seed for deterministic physics.
+        scenario: Initial layout / task preset.
     """
-    cell = get_cell_env()
+    global _current_task
+    cfg = replace(get_config(), scenario=scenario, default_seed=seed)
+    cell = reset_cell_env(cfg)
+    _current_task = TASK_BY_SCENARIO.get(scenario, _current_task)
     return cell.reset(seed)
 
 
@@ -155,7 +160,7 @@ def state_schema() -> str:
                     "stations": [{"id": "station_1", "status": "empty|occupied|done"}],
                     "step": 42,
                     "done": False,
-                    "events": ["pick_success", "collision", "task_complete"],
+                    "events": ["pick_success", "collision", "task_complete", "scenario_misaligned", "scenario_conveyor_feed"],
                 },
             },
             "ui_prompt": {"task": "Move all parts from bin_a to station_1."},

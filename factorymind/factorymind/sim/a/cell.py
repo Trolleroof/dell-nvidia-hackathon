@@ -8,6 +8,14 @@ from typing import Any, Literal, Protocol
 
 from factorymind.agent.schemas import CellPlan, RobotCommand
 from factorymind.sim.a.part_catalog import TASK_BY_SCENARIO, is_task_done
+from factorymind.sim.a.conveyor import (
+    BELT_SPEED,
+    BELT_X_END,
+    BELT_X_START,
+    CONVEYOR_PART_STARTS,
+    CONVEYOR_PART_WRAP,
+    part_at_pick_zone,
+)
 from factorymind.sim.a.state import CellState, PartState, RobotState, Scenario, StationState
 from factorymind.sim.a.targets import TARGET_POSES
 
@@ -63,18 +71,23 @@ class MockCellEnv:
             self._events.append("scenario_empty_bin")
         else:
             self._parts = []
-            defaults = {
-                "part_1": [0.1, 0.2, 0.05],
-                "part_2": [0.15, 0.2, 0.05],
-                "part_3": [0.2, 0.2, 0.05],
-            }
-            for part_id, pos in defaults.items():
+            if self.scenario == "conveyor_feed":
+                for part_id, pos in CONVEYOR_PART_STARTS.items():
+                    self._parts.append(PartState.from_id(part_id, list(pos), "conveyor"))
+                self._events.append("scenario_conveyor_feed")
+            else:
+                defaults = {
+                    "part_1": [0.1, 0.2, 0.05],
+                    "part_2": [0.15, 0.2, 0.05],
+                    "part_3": [0.2, 0.2, 0.05],
+                }
+                for part_id, pos in defaults.items():
+                    if self.scenario == "misaligned":
+                        dx, dy, dz = MISALIGNED_OFFSETS.get(part_id, (0.0, 0.0, 0.0))
+                        pos = [pos[0] + dx, pos[1] + dy, pos[2] + dz]
+                    self._parts.append(PartState.from_id(part_id, pos, "bin_a"))
                 if self.scenario == "misaligned":
-                    dx, dy, dz = MISALIGNED_OFFSETS.get(part_id, (0.0, 0.0, 0.0))
-                    pos = [pos[0] + dx, pos[1] + dy, pos[2] + dz]
-                self._parts.append(PartState.from_id(part_id, pos, "bin_a"))
-            if self.scenario == "misaligned":
-                self._events.append("scenario_misaligned")
+                    self._events.append("scenario_misaligned")
         self._robots = [
             RobotState(id=i, pose="home", gripper="open", holding=None)
             for i in range(self.num_robots)
@@ -86,10 +99,11 @@ class MockCellEnv:
         return self.get_state()
 
     def get_state(self) -> dict[str, Any]:
+        parts = list(self._parts)
         return CellState(
             step=self._step,
             robots=self._robots,
-            parts=self._parts,
+            parts=parts,
             stations=self._stations,
             events=list(self._events),
             done=self._done,
@@ -110,6 +124,8 @@ class MockCellEnv:
                 continue
             self._apply_command(cmd)
 
+        self._advance_conveyor_belt()
+
         task = TASK_BY_SCENARIO.get(self.scenario, TASK_BY_SCENARIO["default"])
         parts_dict = [
             {"id": p.id, "at": p.at, "color": p.color}
@@ -121,6 +137,17 @@ class MockCellEnv:
                 self._events.append("task_complete")
 
         return self.get_state()
+
+    def _advance_conveyor_belt(self) -> None:
+        dx = BELT_SPEED * 0.1
+        for part in self._parts:
+            if part.at != "conveyor":
+                continue
+            part.pos[0] += dx
+            if part.pos[0] > BELT_X_END - 0.04:
+                part.pos[0] = BELT_X_START + 0.05 + CONVEYOR_PART_WRAP.get(part.id, 0.0)
+                part.pos[1] = CONVEYOR_PART_STARTS[part.id][1]
+                part.pos[2] = CONVEYOR_PART_STARTS[part.id][2]
 
     def _apply_command(self, cmd: RobotCommand) -> None:
         robot = self._robots[cmd.id]
@@ -143,6 +170,13 @@ class MockCellEnv:
             if part is None:
                 self._events.append("grip_miss")
                 return
+            if part.at == "conveyor":
+                if robot.pose != TARGET_POSES.get("conveyor_pick", "above_conveyor_pick"):
+                    self._events.append("grip_miss")
+                    return
+                if not part_at_pick_zone(part.pos[0]):
+                    self._events.append("grip_miss")
+                    return
             if robot.gripper == "closed":
                 self._events.append("gripper_busy")
                 return

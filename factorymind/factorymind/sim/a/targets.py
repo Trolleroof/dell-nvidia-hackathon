@@ -13,6 +13,7 @@ TARGET_POSES: dict[str, str] = {
     "part_1": "above_part_1",
     "part_2": "above_part_2",
     "part_3": "above_part_3",
+    "conveyor_pick": "above_conveyor_pick",
 }
 
 try:

@@ -56,7 +56,7 @@ def plan_action_summary(plan: CellPlan) -> str:
 def pick_sim_event(events: list[str], done: bool) -> str:
     if done:
         return "task_complete"
-    for name in ("pick_success", "place_success", "collision", "grip_miss", "scenario_misaligned", "scenario_empty_bin"):
+    for name in ("pick_success", "place_success", "collision", "grip_miss", "scenario_misaligned", "scenario_empty_bin", "scenario_conveyor_feed"):
         if name in events:
             return name
     return "task_progress"

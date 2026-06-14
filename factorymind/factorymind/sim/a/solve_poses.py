@@ -18,7 +18,7 @@ from factorymind.sim.a.pose_lookup import (
     scene_path,
 )
 
-ARM0_TARGETS = ("bin_a", "station_1", "part_1", "part_2", "part_3")
+ARM0_TARGETS = ("bin_a", "station_1", "part_1", "part_2", "part_3", "conveyor_pick")
 ARM1_TARGETS = ("bin_b", "station_2")
 
 MAX_ITER = 300

@@ -36,6 +36,7 @@ SITE_TARGETS = (
     "part_1",
     "part_2",
     "part_3",
+    "conveyor_pick",
 )
 
 POSES_PATH = Path(__file__).resolve().parent / "assets" / "poses.json"
@@ -84,7 +85,7 @@ def ee_distance_to_site(
     """Euclidean distance (m) from end-effector to a named site/body."""
     ee_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, f"arm{arm_id}_ee")
     ee = data.site_xpos[ee_id]
-    if site_name.startswith("part_"):
+    if site_name.startswith("part_") or site_name.startswith("belt_block_"):
         bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, site_name)
         tgt = data.xpos[bid]
     else:
