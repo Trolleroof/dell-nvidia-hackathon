@@ -1,14 +1,10 @@
 import { useEffect, useState } from "react";
 import { CellView } from "./CellView";
-import { ActionStream } from "./ActionStream";
-import { LatencyRace } from "./LatencyRace";
-import { StatsPanel } from "./StatsPanel";
-import type { Mode, TelemetryRow, Aggregate } from "../types";
+import type { Mode, TelemetryRow } from "../types";
 
 interface ChatMessage {
   role: "operator" | "agent";
   text: string;
-  at: string;
 }
 
 interface Props {
@@ -18,35 +14,21 @@ interface Props {
   setPlaying: (playing: boolean) => void;
   speed: number;
   setSpeed: (speed: number) => void;
-  cloud: boolean;
-  setCloud: (cloud: boolean) => void;
   liveUrl: string;
   setLiveUrl: (url: string) => void;
   latest: { d?: TelemetryRow; a?: TelemetryRow };
-  stream: TelemetryRow[];
   step: number;
-  hint: string;
-  cloudRtt: number;
-  aggregates: { d: Aggregate | null; a: Aggregate | null };
-  decisions: number;
   resetKey: number;
   onReset: () => void;
   onFetchIsolatedReplay: () => void;
 }
 
-const quickCommands = [
-  "Run five safe assembly steps",
-  "Pause on collision or parse failure",
-  "Explain the last action",
-  "Switch to live feed when ready",
-];
-
 const LIVE_FEED_URL = "http://localhost:8766/telemetry/run.jsonl";
 
 function modeLabel(mode: Mode) {
-  if (mode === "mock") return "Mock live";
+  if (mode === "mock") return "Mock";
   if (mode === "replay") return "Replay";
-  return "Live feed";
+  return "Live";
 }
 
 export function AgentSimPage({
@@ -56,29 +38,16 @@ export function AgentSimPage({
   setPlaying,
   speed,
   setSpeed,
-  cloud,
-  setCloud,
   liveUrl,
   setLiveUrl,
   latest,
-  stream,
   step,
-  hint,
-  cloudRtt,
-  aggregates,
-  decisions,
   resetKey,
   onReset,
   onFetchIsolatedReplay,
 }: Props) {
   const [draft, setDraft] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "agent",
-      text: "Nemoclaw control bridge is staged. For now, I can mirror operator intents while the sim runs locally.",
-      at: "ready",
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   useEffect(() => {
     if (liveUrl !== LIVE_FEED_URL) setLiveUrl(LIVE_FEED_URL);
@@ -87,23 +56,16 @@ export function AgentSimPage({
   const send = (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    const at = `step ${step}`;
     setMessages((prev) => [
       ...prev,
-      { role: "operator", text: trimmed, at },
-      {
-        role: "agent",
-        text: `Queued for Nemoclaw: "${trimmed}". Current sim mode is ${modeLabel(mode)} and ${
-          playing ? "running" : "paused"
-        }.`,
-        at,
-      },
+      { role: "operator", text: trimmed },
+      { role: "agent", text: "Queued." },
     ]);
     setDraft("");
   };
 
   const latestRow = latest.d ?? latest.a;
-  const health = latestRow?.parsed_ok === false ? "Parse guard tripped" : latestRow?.sim_event ?? "Nominal";
+  const health = latestRow?.parsed_ok === false ? "Parse error" : latestRow?.sim_event ?? "OK";
 
   return (
     <main className="agent-shell">
@@ -118,10 +80,10 @@ export function AgentSimPage({
               ))}
             </div>
             <button className="agent-primary" onClick={() => setPlaying(!playing)}>
-              {playing ? "Pause sim" : "Run sim"}
+              {playing ? "Pause" : "Run"}
             </button>
             <button className="agent-secondary" onClick={onReset}>Reset</button>
-            <button className="agent-secondary" onClick={onFetchIsolatedReplay}>Load replay</button>
+            <button className="agent-secondary" onClick={onFetchIsolatedReplay}>Replay</button>
             <div className="agent-status-inline">
               <span className="agent-status-dot" />
               <strong>{playing ? "Running" : "Paused"}</strong>
@@ -142,19 +104,6 @@ export function AgentSimPage({
               />
               <span>{speed.toFixed(2).replace(/0$/, "")}x</span>
             </label>
-            <label className="agent-checkbox">
-              <input type="checkbox" checked={cloud} onChange={(event) => setCloud(event.target.checked)} />
-              Cloud comparison
-            </label>
-            {mode === "live" && (
-              <input
-                value={liveUrl}
-                onChange={(event) => setLiveUrl(event.target.value)}
-                className="agent-live-input"
-                spellCheck={false}
-                aria-label="Live telemetry URL"
-              />
-            )}
           </div>
 
           <div className="agent-sim-frame">
@@ -166,41 +115,18 @@ export function AgentSimPage({
               animatedFallback={mode === "mock"}
             />
           </div>
-
-          <div className="agent-metrics-grid">
-            <LatencyRace d={latest.d} a={latest.a} />
-            <StatsPanel
-              d={aggregates.d}
-              a={aggregates.a}
-              cloud={cloud}
-              cloudRtt={cloudRtt}
-              step={step}
-              decisions={decisions}
-            />
-          </div>
         </div>
 
         <aside className="agent-chat-card">
           <div className="agent-chat-header">
-            <div>
-              <span>Nemoclaw console</span>
-              <strong>Local command draft</strong>
-            </div>
-            <small>{hint}</small>
-          </div>
-
-          <div className="agent-quick-grid">
-            {quickCommands.map((command) => (
-              <button key={command} onClick={() => send(command)}>{command}</button>
-            ))}
+            <strong>Chat</strong>
           </div>
 
           <div className="agent-thread">
             {messages.map((message, index) => (
               <div key={`${message.role}-${index}`} className={`agent-message ${message.role}`}>
-                <span>{message.role === "operator" ? "You" : "Nemoclaw"}</span>
+                <span>{message.role === "operator" ? "You" : "Agent"}</span>
                 <p>{message.text}</p>
-                <small>{message.at}</small>
               </div>
             ))}
           </div>
@@ -215,13 +141,11 @@ export function AgentSimPage({
             <textarea
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder="Ask the agent to inspect, pause, reset, or run the sim..."
+              placeholder="Command..."
               rows={4}
             />
-            <button type="submit">Queue command</button>
+            <button type="submit">Send</button>
           </form>
-
-          <ActionStream rows={stream.slice(0, 6)} />
         </aside>
       </section>
     </main>

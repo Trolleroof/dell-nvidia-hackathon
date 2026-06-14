@@ -70,21 +70,6 @@ body::before {
   }
 }
 
-.agent-nav-link {
-  border: 1px solid rgba(28, 36, 48, 0.9);
-  border-radius: 999px;
-  color: #8a98a8;
-  padding: 8px 12px;
-  text-decoration: none;
-  background: rgba(12, 15, 20, 0.72);
-}
-.agent-nav-link.is-active,
-.agent-nav-link:hover {
-  color: #eef3f8;
-  border-color: rgba(118, 185, 0, 0.55);
-  background: linear-gradient(180deg, rgba(118, 185, 0, 0.18), rgba(10, 143, 220, 0.08));
-}
-
 .agent-shell {
   margin-top: 18px;
 }
@@ -150,7 +135,6 @@ body::before {
 .agent-mode-tabs button,
 .agent-primary,
 .agent-secondary,
-.agent-quick-grid button,
 .agent-composer button {
   border: 0;
   cursor: pointer;
@@ -200,22 +184,6 @@ body::before {
 .agent-speed-row input[type="range"] {
   accent-color: #76b900;
 }
-.agent-checkbox {
-  border: 1px solid #1c2430;
-  border-radius: 999px;
-  padding: 7px 10px;
-  background: #0c0f14;
-}
-.agent-live-input {
-  min-width: min(100%, 320px);
-  border: 1px solid #1c2430;
-  border-radius: 12px;
-  padding: 9px 11px;
-  background: #080c10;
-  color: #eef3f8;
-  font: inherit;
-  text-transform: none;
-}
 .agent-sim-frame .card {
   min-height: 400px;
 }
@@ -223,12 +191,6 @@ body::before {
 .agent-sim-frame svg {
   height: min(54vh, 520px);
   min-height: 340px;
-}
-.agent-metrics-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.72fr);
-  gap: 14px;
-  margin-top: 14px;
 }
 .agent-chat-card {
   position: sticky;
@@ -239,54 +201,14 @@ body::before {
   gap: 12px;
 }
 .agent-chat-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
   border-bottom: 1px solid #1c2430;
   padding-bottom: 12px;
 }
-.agent-chat-header span,
 .agent-chat-header strong {
-  display: block;
-}
-.agent-chat-header span {
-  color: #95e600;
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 1.8px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
   text-transform: uppercase;
-}
-.agent-chat-header strong {
-  margin-top: 3px;
-  font-size: 20px;
-  letter-spacing: -0.5px;
-}
-.agent-chat-header small {
-  max-width: 210px;
-  color: #56636f;
-  font-size: 11px;
-  line-height: 1.45;
-  text-align: right;
-}
-.agent-quick-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-.agent-quick-grid button {
-  min-height: 58px;
-  border: 1px solid rgba(28, 36, 48, 0.95);
-  border-radius: 14px;
-  padding: 10px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
-  color: #a8b5c2;
-  font-size: 11px;
-  line-height: 1.35;
-  text-align: left;
-}
-.agent-quick-grid button:hover {
-  border-color: rgba(10, 143, 220, 0.65);
-  color: #eef3f8;
 }
 .agent-thread {
   flex: 1;
@@ -328,10 +250,6 @@ body::before {
   font-size: 13px;
   line-height: 1.5;
 }
-.agent-message small {
-  color: #56636f;
-  font-size: 10px;
-}
 .agent-composer {
   display: grid;
   gap: 8px;
@@ -360,8 +278,7 @@ body::before {
 }
 
 @media (max-width: 1180px) {
-  .agent-grid,
-  .agent-metrics-grid {
+  .agent-grid {
     grid-template-columns: 1fr;
   }
   .agent-chat-card {
@@ -379,16 +296,12 @@ body::before {
   .agent-mode-tabs,
   .agent-primary,
   .agent-secondary,
-  .agent-speed-row label,
-  .agent-live-input {
+  .agent-speed-row label {
     width: 100%;
   }
   .agent-mode-tabs button {
     flex: 1;
     padding-inline: 8px;
-  }
-  .agent-quick-grid {
-    grid-template-columns: 1fr;
   }
   .agent-sim-frame img,
   .agent-sim-frame svg {

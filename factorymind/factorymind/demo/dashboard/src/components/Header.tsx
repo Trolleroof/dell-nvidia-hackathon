@@ -1,7 +1,4 @@
-import type { Mode } from "../types";
-
-export function Header({ mode }: { mode: Mode }) {
-  const label = mode === "mock" ? "Mock" : mode === "replay" ? "Replay" : "Live Feed";
+export function Header() {
   return (
     <header className="flex items-center gap-5 flex-wrap pb-3.5 border-b border-line">
       <div className="flex items-center gap-3.5">
@@ -29,15 +26,6 @@ export function Header({ mode }: { mode: Mode }) {
           </span>
         </span>
       </div>
-      <div className="flex-1" />
-      <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(118,185,0,.4)] bg-panel px-3 py-1.5 text-xs font-bold tracking-[1px] uppercase text-nvidia-bright">
-        <span className="w-2 h-2 rounded-full bg-nvidia shadow-[0_0_12px_#76b900]" />
-        Local · GB10 · No Cloud
-      </span>
-      <span className="inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 text-xs font-bold tracking-[1px] uppercase">
-        <span className="w-2 h-2 rounded-full bg-dell shadow-[0_0_12px_#0a8fdc]" />
-        {label}
-      </span>
     </header>
   );
 }
