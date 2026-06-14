@@ -7,10 +7,14 @@ import shutil
 import time
 from pathlib import Path
 
-from factorymind.sim.a.render import DASHBOARD_HEIGHT, DASHBOARD_WIDTH, default_frames_dir
-
 LATEST_PNG = "latest.png"
 LATEST_JSON = "latest.json"
+DASHBOARD_WIDTH = 1280
+DASHBOARD_HEIGHT = 720
+
+
+def default_frames_dir() -> Path:
+    return Path(__file__).resolve().parent / "frames"
 
 
 def latest_frame_path(frames_dir: Path | None = None) -> Path:

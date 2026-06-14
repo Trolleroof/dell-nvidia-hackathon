@@ -96,6 +96,8 @@ class MujocoCellEnv:
         if self.scenario == "empty_bin":
             self._part_at = {}
             self._events.append("scenario_empty_bin")
+            self._events.append("empty_bin_diagnosed")
+            self._done = True
         elif self.scenario == "conveyor_feed":
             self._part_at = {"part_1": "conveyor", "part_2": "conveyor", "part_3": "conveyor"}
             self._events.append("scenario_conveyor_feed")

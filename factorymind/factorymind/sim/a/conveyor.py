@@ -9,8 +9,6 @@ No external mesh dependency — primitive geoms only (Apache-2.0 / project licen
 
 from __future__ import annotations
 
-import mujoco
-
 # Belt layout (world frame, metres) — runs +X along the front edge of the table
 BELT_Y = -0.30
 BELT_Z = 0.435
@@ -84,6 +82,8 @@ def in_belt_zone(x: float, y: float, z: float) -> bool:
 
 def add_conveyor_to_world(wb) -> None:
     """Add static belt frame + sites; free-joint blocks added separately."""
+    import mujoco
+
     cx = (BELT_X_START + BELT_X_END) / 2
     frame = wb.add_body(name="conveyor_frame", pos=[cx, BELT_Y, BELT_Z - 0.015])
 
@@ -146,6 +146,8 @@ def add_conveyor_to_world(wb) -> None:
 
 
 def add_belt_blocks_to_world(wb) -> None:
+    import mujoco
+
     for block_id, pos in BELT_BLOCK_STARTS.items():
         body = wb.add_body(name=block_id, pos=pos)
         body.add_freejoint(name=f"{block_id}_free")

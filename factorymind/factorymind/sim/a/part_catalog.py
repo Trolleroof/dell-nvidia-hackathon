@@ -58,7 +58,7 @@ def parts_for_task(parts: list[dict], task: str) -> list[dict]:
 
 def is_task_done(parts: list[dict], task: str, scenario: str) -> bool:
     if scenario == "empty_bin":
-        return False
+        return True
     targets = parts_for_task(parts, task)
     if not targets:
         return False

@@ -69,6 +69,8 @@ class MockCellEnv:
         if self.scenario == "empty_bin":
             self._parts = []
             self._events.append("scenario_empty_bin")
+            self._events.append("empty_bin_diagnosed")
+            self._done = True
         else:
             self._parts = []
             if self.scenario == "conveyor_feed":

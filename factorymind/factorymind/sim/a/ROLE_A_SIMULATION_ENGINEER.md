@@ -43,7 +43,7 @@ Append a changelog entry whenever you ship. Edit only under `sim/a/`.
 
 **Backend:** `mock` (default) · `FACTORYMIND_SIM_BACKEND=mujoco` for physics + frames
 
-**Scenarios:** `FACTORYMIND_SIM_SCENARIO=default|sort_green|misaligned|empty_bin`
+**Scenarios:** `FACTORYMIND_SIM_SCENARIO=default|sort_green|misaligned|empty_bin|conveyor_feed`
 
 ---
 
