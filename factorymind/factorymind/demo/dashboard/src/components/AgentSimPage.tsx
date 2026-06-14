@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CellView } from "./CellView";
 import { ActionStream } from "./ActionStream";
 import { LatencyRace } from "./LatencyRace";
@@ -73,6 +73,7 @@ export function AgentSimPage({
   onFetchIsolatedReplay,
 }: Props) {
   const [draft, setDraft] = useState("");
+  const autoStepBusy = useRef(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "agent",
@@ -84,6 +85,27 @@ export function AgentSimPage({
   useEffect(() => {
     if (liveUrl !== LIVE_FEED_URL) setLiveUrl(LIVE_FEED_URL);
   }, [liveUrl, setLiveUrl]);
+
+  // Auto-step: when playing in live mode, continuously advance the sim
+  useEffect(() => {
+    if (!playing || mode !== "live") return;
+    const id = setInterval(async () => {
+      if (autoStepBusy.current) return;
+      autoStepBusy.current = true;
+      try {
+        await fetch(COMMAND_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ steps: 1 }),
+        });
+      } catch {
+        // sim not running — ignore
+      } finally {
+        autoStepBusy.current = false;
+      }
+    }, 600);
+    return () => clearInterval(id);
+  }, [playing, mode]);
 
   const send = async (text: string) => {
     const trimmed = text.trim();

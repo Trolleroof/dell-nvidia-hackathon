@@ -434,6 +434,52 @@ class MujocoCellEnv:
                     self._events.append("collision")
                 break
 
+    def teleport_part(self, part_id: str, target: str) -> dict[str, Any]:
+        """Directly move a part to a named zone (bin_a, bin_b, station_1, station_2)."""
+        if part_id not in self._part_at:
+            return {"ok": False, "error": f"Unknown part: {part_id}"}
+
+        # Release from any gripper
+        for i in range(self.num_robots):
+            if self._holding[i] == part_id:
+                self._holding[i] = None
+                self._gripper_closed[i] = False
+                self._open_gripper(i)
+
+        _bin_centers: dict[str, list[float]] = {
+            "bin_a": [0.25, 0.15, 0.44],
+            "bin_b": [0.25, -0.15, 0.44],
+        }
+        _part_offsets: dict[str, list[float]] = {
+            "part_1": [-0.03, -0.03, 0.02],
+            "part_2": [0.0, 0.0, 0.02],
+            "part_3": [0.03, 0.03, 0.02],
+        }
+
+        old_at = self._part_at[part_id]
+
+        if target in ("station_1", "station_2"):
+            site_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_SITE, target)
+            if site_id >= 0:
+                sp = self._model.site_pos[site_id]
+                self._set_body_pos(part_id, [float(sp[0]), float(sp[1]), float(sp[2]) + 0.025])
+            if old_at in self._station_status:
+                self._station_status[old_at] = "empty"
+            self._station_status[target] = "occupied"
+            self._part_at[part_id] = target
+        elif target in _bin_centers:
+            cx, cy, cz = _bin_centers[target]
+            dx, dy, dz = _part_offsets.get(part_id, [0.0, 0.0, 0.02])
+            self._set_body_pos(part_id, [cx + dx, cy + dy, cz + dz])
+            if old_at in self._station_status:
+                self._station_status[old_at] = "empty"
+            self._part_at[part_id] = target
+        else:
+            return {"ok": False, "error": f"Unknown target: {target}"}
+
+        mujoco.mj_forward(self._model, self._data)
+        return {"ok": True, "part": part_id, "from": old_at, "target": target}
+
     # Back-compat for verify_poses
     def _move_arm(self, robot_id: int, qpos: dict[str, float]) -> None:
         apply_arm_qpos(

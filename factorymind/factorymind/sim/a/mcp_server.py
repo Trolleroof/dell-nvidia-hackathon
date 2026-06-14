@@ -341,6 +341,49 @@ async def queue_command(request):  # type: ignore[no-untyped-def]
     )
 
 
+@mcp.custom_route("/sim/state", methods=["GET", "OPTIONS"])
+async def sim_state_route(request):  # type: ignore[no-untyped-def]
+    from starlette.responses import JSONResponse
+
+    if request.method == "OPTIONS":
+        return JSONResponse({}, headers=_CORS_HEADERS)
+
+    env = get_cell_env()
+    state = env.get_state()
+    return JSONResponse(state, headers=_CORS_HEADERS)
+
+
+@mcp.custom_route("/teleport_part", methods=["POST", "OPTIONS"])
+async def teleport_part_route(request):  # type: ignore[no-untyped-def]
+    from starlette.responses import JSONResponse
+
+    if request.method == "OPTIONS":
+        return JSONResponse({}, headers=_CORS_HEADERS)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    part_id = str(body.get("part_id", "")).strip()
+    target = str(body.get("target", "")).strip()
+
+    if not part_id or not target:
+        return JSONResponse({"ok": False, "error": "part_id and target required"}, headers=_CORS_HEADERS)
+
+    env = get_cell_env()
+    if not hasattr(env, "teleport_part"):
+        return JSONResponse(
+            {"ok": False, "error": "teleport_part not supported on mock backend"},
+            headers=_CORS_HEADERS,
+        )
+
+    result = env.teleport_part(part_id, target)  # type: ignore[attr-defined]
+    if result.get("ok"):
+        _save_live_frame("teleport")
+    return JSONResponse(result, headers=_CORS_HEADERS)
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
