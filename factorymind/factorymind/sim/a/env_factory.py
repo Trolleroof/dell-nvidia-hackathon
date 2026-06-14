@@ -1,4 +1,4 @@
-"""Single entry point for other roles — import this, not sim internals."""
+"""Single entry point — create_cell_env() / get_cell_env()."""
 
 from __future__ import annotations
 

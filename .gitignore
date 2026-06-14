@@ -24,3 +24,4 @@ factorymind/telemetry/*.jsonl
 
 # MuJoCo / sim caches
 *.mjcf.bak
+factorymind/factorymind/sim/a/frames/*.png

@@ -12,7 +12,7 @@ from factorymind.sim.a.targets import TARGET_POSES
 
 
 class CellEnv(Protocol):
-    """Stable interface for Role B — do not break without coordinating."""
+    """Stable sim interface — reset, state, step."""
 
     num_robots: int
 

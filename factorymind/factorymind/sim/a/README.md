@@ -1,44 +1,57 @@
-# Role A — Simulation Engineer workspace
+# Simulation Engineer workspace
 
-**You own everything under `factorymind/sim/a/`.** Edit only here so you never conflict with B/C/D.
+**Edit only under `factorymind/sim/a/`.**
+
+Status log: [`ROLE_A_SIMULATION_ENGINEER.md`](ROLE_A_SIMULATION_ENGINEER.md)
 
 ## Folder map
 
 | File / folder | Purpose |
 |---------------|---------|
-| `cell.py` | Mock cell (`MockCellEnv`) — your main logic today |
-| `mujoco_cell.py` | MuJoCo backend (build here next) |
+| `cell.py` | Mock cell |
+| `mujoco_cell.py` | MuJoCo physics backend |
+| `render.py` | Offscreen PNG renderer |
+| `render_frame.py` | CLI — capture one frame |
+| `pose_lookup.py` | Auto joint targets from MJCF |
+| `verify_poses.py` | EE reachability check |
+| `run_oracle_replay.py` | PNG sequence demo |
 | `state.py` | C2 state types |
-| `targets.py` | Named target → pose lookup |
-| `config.py` | Backend switch (`mock` / `mujoco`) |
-| `env_factory.py` | **Integration point for Role B** — `create_cell_env()` |
-| `oracle.py` | Deterministic demo policy |
+| `targets.py` | Named target → pose / joint lookup |
+| `config.py` | `mock` / `mujoco` backend switch |
+| `env_factory.py` | `create_cell_env()` entry point |
+| `oracle.py` | Deterministic pick-and-place policy |
 | `mcp_server.py` | MCP tools for Cursor |
-| `smoke_test.py` | Your CI check |
-| `assets/` | MJCF/XML meshes |
+| `smoke_test.py` | Health check |
+| `view_scene.py` | Interactive MuJoCo viewer |
+| `assets/` | MJCF scene |
+| `frames/` | Rendered PNG output (gitignored) |
 
-## Do not edit (other roles)
-
-| Path | Owner |
-|------|-------|
-| `factorymind/agent/` | Role B (Agent) |
-| `factorymind/demo/` | Role C (Frontend) |
-| `scripts/` | Role D (Models & Box) |
-| `agent/schemas.py` | Co-owned C1 — propose changes to B, don't silently change |
-
-## Commands (your venv)
+## Commands
 
 ```bash
 cd factorymind && source .venv/bin/activate
 
-# Your smoke test
 python -m factorymind.sim.a.smoke_test
-
-# Your MCP server
+python -m factorymind.sim.a.verify_poses
+python -m factorymind.sim.a.view_scene
+python -m factorymind.sim.a.render_frame
+python -m factorymind.sim.a.run_oracle_replay
 python -m factorymind.sim.a.mcp_server
 ```
 
-## What teammates import (tell B this)
+## Backends
+
+```bash
+# mock (default)
+python -m factorymind.sim.a.smoke_test
+
+# MuJoCo physics + render
+export FACTORYMIND_SIM_BACKEND=mujoco
+python -m factorymind.sim.a.smoke_test
+python -m factorymind.sim.a.render_frame
+```
+
+## Integration entry point
 
 ```python
 from factorymind.sim.a import create_cell_env
@@ -48,18 +61,4 @@ state = env.get_state()
 env.step(plan)
 ```
 
-They should **not** import `MockCellEnv` directly unless testing.
-
-## Switching to MuJoCo later
-
-1. Implement `MujocoCellEnv` in `mujoco_cell.py`
-2. Add assets under `assets/`
-3. Set `FACTORYMIND_SIM_BACKEND=mujoco` or change default in `config.py`
-
-No other files need to change if the interface stays the same.
-
-## Merge conflict tips
-
-- Stay inside `sim/a/` for all sim work
-- Top-level `sim/*.py` files are thin shims — leave them alone
-- If C1 schema must change, edit `agent/schemas.py` with B in the loop (one PR, both review)
+Stay inside `sim/a/` for all sim work. Top-level `sim/*.py` files are thin shims — do not edit.

@@ -1,19 +1,12 @@
-# FactoryMind
+# FactoryMind — Simulation
 
-Local multi-robot assembly cell controller for the Dell × NVIDIA GB10 hackathon.
+Local multi-robot assembly cell sim for the Dell × NVIDIA GB10 hackathon.
 
-## Quick start by role
+**Workspace:** `factorymind/sim/a/`  
+**Status log:** [`sim/a/ROLE_A_SIMULATION_ENGINEER.md`](factorymind/sim/a/ROLE_A_SIMULATION_ENGINEER.md)  
+**Quick start:** [`README_SIM.md`](README_SIM.md)
 
-| Role | Start here |
-|------|------------|
-| **A — Simulation** | [`factorymind/sim/a/README.md`](factorymind/sim/a/README.md) |
-| **B — Agent** | `factorymind/agent/` (control loop, schemas, telemetry) |
-| **C — Frontend** | `factorymind/demo/` (latency dashboard) |
-| **D — Models & Box** | `scripts/` (serving, box bring-up) |
-
-Project overview: [`../overview.md`](../overview.md) · Roles detail: [`../roles.md`](../roles.md)
-
-## Install (Mac or GB10)
+## Install
 
 ```bash
 cd factorymind
@@ -23,8 +16,15 @@ pip install -e .
 python -m factorymind.sim.a.smoke_test
 ```
 
-Do **not** copy `.venv` between Mac and GB10 — install deps on each machine.
+Do **not** copy `.venv` between machines — run `pip install -e .` on each.
 
-## File ownership
+## Commands
 
-See [`CODEOWNERS.md`](CODEOWNERS.md). Simulation code lives under `factorymind/sim/a/` only.
+```bash
+python -m factorymind.sim.a.smoke_test
+python -m factorymind.sim.a.view_scene
+python -m factorymind.sim.a.render_frame
+export FACTORYMIND_SIM_BACKEND=mujoco   # physics + PNG frames
+```
+
+Project docs: [`../overview.md`](../overview.md)

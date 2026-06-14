@@ -1,9 +1,7 @@
-"""MCP server for Role A sim — lives in sim/a/ to avoid merge conflicts.
+"""MCP server for the cell sim (stdio / HTTP).
 
-Run (stdio — for Cursor):
+Run:
     python -m factorymind.sim.a.mcp_server
-
-Run (HTTP):
     python -m factorymind.sim.a.mcp_server --http
 """
 
@@ -55,6 +53,16 @@ def step_cell(plan_json: str) -> dict[str, Any]:
 def list_targets() -> list[str]:
     """List valid named targets for move/grip/release commands."""
     return get_cell_env().list_targets()
+
+
+@mcp.tool()
+def render_cell_frame(filename: str = "") -> str:
+    """Save an offscreen PNG of the current cell (MuJoCo backend). Returns file path."""
+    cell = get_cell_env()
+    if not hasattr(cell, "save_frame"):
+        return "Render requires FACTORYMIND_SIM_BACKEND=mujoco"
+    path = cell.save_frame(filename or None)
+    return str(path)
 
 
 @mcp.resource("factorymind://schema/c2")

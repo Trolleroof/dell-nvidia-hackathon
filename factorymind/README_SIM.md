@@ -1,38 +1,40 @@
-# FactoryMind — Simulation Engineer Quick Start
+# Simulation Engineer — Quick Start
 
-**Your workspace:** `factorymind/factorymind/sim/a/` — edit only there.
-
-See **`factorymind/sim/a/README.md`** for the full playbook.
+**Workspace:** `factorymind/factorymind/sim/a/`  
+**Status log:** [`factorymind/sim/a/ROLE_A_SIMULATION_ENGINEER.md`](factorymind/sim/a/ROLE_A_SIMULATION_ENGINEER.md)
 
 ## Setup
 
 ```bash
 cd factorymind
-source .venv/bin/activate   # or: python3 -m venv .venv && pip install -e .
+source .venv/bin/activate
+pip install -e .
 python -m factorymind.sim.a.smoke_test
 ```
 
-## Your files vs everyone else's
+## Commands
 
-| You edit | Others edit |
-|----------|-------------|
-| `sim/a/*` | `agent/*` (B), `demo/*` (C), `scripts/*` (D) |
+| Command | What |
+|---------|------|
+| `python -m factorymind.sim.a.smoke_test` | mock + mujoco + render check |
+| `python -m factorymind.sim.a.verify_poses` | EE reachability vs all targets |
+| `python -m factorymind.sim.a.view_scene` | 3D viewer |
+| `python -m factorymind.sim.a.render_frame` | single PNG |
+| `python -m factorymind.sim.a.run_all` | **Everything** — checks + replay + live 3D window |
+| `python -m factorymind.sim.a.run_live_demo` | Live oracle in MuJoCo viewer only |
+| `python -m factorymind.sim.a.mcp_server` | MCP for Cursor |
 
-Tell Role B to import:
+MuJoCo: `export FACTORYMIND_SIM_BACKEND=mujoco`
+
+## API
 
 ```python
 from factorymind.sim.a import create_cell_env
+
 env = create_cell_env()
+env.get_state()
+env.step(plan)
+env.save_frame()  # mujoco only
 ```
 
-## MCP in Cursor
-
-Server module: `factorymind.sim.a.mcp_server` (configured in `.cursor/mcp.json`).
-
-## Next: MuJoCo
-
-1. Add MJCF under `sim/a/assets/`
-2. Implement `MujocoCellEnv` in `sim/a/mujoco_cell.py`
-3. Set `FACTORYMIND_SIM_BACKEND=mujoco` when ready
-
-Interface stays the same — no merge conflicts with B.
+Playbook: [`factorymind/sim/a/README.md`](factorymind/sim/a/README.md)

@@ -4,7 +4,7 @@ Edit only your role's folder to avoid merge conflicts.
 
 | Role | Folder | Lead |
 |------|--------|------|
-| **A — Simulation** | `factorymind/factorymind/sim/a/` | Sim engineer |
+| **A — Simulation** | `factorymind/factorymind/sim/a/` | Sim engineer · [status log](factorymind/sim/a/ROLE_A_SIMULATION_ENGINEER.md) |
 | **B — Agent** | `factorymind/factorymind/agent/` | Agent engineer |
 | **C — Frontend** | `factorymind/factorymind/demo/` | Frontend engineer |
 | **D — Models & Box** | `factorymind/scripts/`, `factorymind/models/` | Infra |

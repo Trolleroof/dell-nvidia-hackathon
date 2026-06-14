@@ -1,0 +1,115 @@
+<!-- FactoryMind assembly cell — standalone MJCF (no external meshes).
+     Two simplified 3-axis slide arms + 3 free parts. Replace with Menagerie arms when time allows. -->
+<mujoco model="factorymind_cell">
+  <option timestep="0.002" gravity="0 0 -9.81"/>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="120" elevation="-20"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="512"/>
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.2 0.2 0.2" rgb2="0.3 0.3 0.3" width="512" height="512"/>
+    <material name="grid" texture="grid" texrepeat="8 8" reflectance="0.1"/>
+    <material name="table" rgba="0.55 0.45 0.35 1"/>
+    <material name="bin" rgba="0.2 0.5 0.8 0.6"/>
+    <material name="station" rgba="0.8 0.5 0.2 0.6"/>
+    <material name="part" rgba="0.9 0.85 0.2 1"/>
+    <material name="arm" rgba="0.7 0.7 0.75 1"/>
+    <material name="gripper" rgba="0.3 0.3 0.35 1"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 2" dir="0 0 -1" diffuse="0.8 0.8 0.8"/>
+    <geom name="floor" type="plane" size="2 2 0.05" material="grid"/>
+
+    <!-- Table -->
+    <body name="table" pos="0.5 0 0.4">
+      <geom name="table_top" type="box" size="0.45 0.35 0.02" material="table"/>
+    </body>
+
+    <!-- Bin A (source) -->
+    <site name="bin_a" pos="0.25 0.15 0.44" size="0.08 0.08 0.01" rgba="0.2 0.5 0.8 0.3"/>
+    <geom name="bin_a_geom" type="box" pos="0.25 0.15 0.42" size="0.1 0.1 0.01" material="bin" contype="0" conaffinity="0"/>
+
+    <!-- Station 1 (destination) -->
+    <site name="station_1" pos="0.75 0.15 0.44" size="0.08 0.08 0.01" rgba="0.8 0.5 0.2 0.3"/>
+    <geom name="station_1_geom" type="box" pos="0.75 0.15 0.42" size="0.1 0.1 0.01" material="station" contype="0" conaffinity="0"/>
+
+    <!-- Bin B -->
+    <site name="bin_b" pos="0.25 -0.15 0.44" size="0.08 0.08 0.01" rgba="0.2 0.5 0.8 0.3"/>
+    <geom name="bin_b_geom" type="box" pos="0.25 -0.15 0.42" size="0.1 0.1 0.01" material="bin" contype="0" conaffinity="0"/>
+
+    <!-- Station 2 -->
+    <site name="station_2" pos="0.75 -0.15 0.44" size="0.08 0.08 0.01" rgba="0.8 0.5 0.2 0.3"/>
+    <geom name="station_2_geom" type="box" pos="0.75 -0.15 0.42" size="0.1 0.1 0.01" material="station" contype="0" conaffinity="0"/>
+
+    <!-- Robot 0 — slide XYZ arm above table -->
+    <body name="arm0_base" pos="0.15 0.35 0.44">
+      <inertial mass="0.5" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+      <joint name="arm0_x" type="slide" axis="1 0 0" range="0 0.6" damping="2"/>
+      <body name="arm0_y" pos="0 0 0">
+        <inertial mass="0.4" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+        <joint name="arm0_y" type="slide" axis="0 1 0" range="-0.2 0.3" damping="2"/>
+        <body name="arm0_z" pos="0 0 0">
+          <inertial mass="0.3" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+          <joint name="arm0_z" type="slide" axis="0 0 1" range="0 0.25" damping="2"/>
+          <geom name="arm0_link" type="cylinder" size="0.015 0.08" fromto="0 0 0 0 0 -0.08" material="arm"/>
+          <body name="arm0_ee" pos="0 0 -0.08">
+            <inertial mass="0.1" pos="0 0 0" diaginertia="0.0001 0.0001 0.0001"/>
+            <geom name="arm0_gripper" type="box" size="0.02 0.04 0.01" material="gripper"/>
+            <site name="arm0_ee" pos="0 0 0" size="0.01"/>
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <!-- Robot 1 -->
+    <body name="arm1_base" pos="0.15 -0.15 0.44">
+      <inertial mass="0.5" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+      <joint name="arm1_x" type="slide" axis="1 0 0" range="0 0.6" damping="2"/>
+      <body name="arm1_y" pos="0 0 0">
+        <inertial mass="0.4" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+        <joint name="arm1_y" type="slide" axis="0 1 0" range="-0.3 0.2" damping="2"/>
+        <body name="arm1_z" pos="0 0 0">
+          <inertial mass="0.3" pos="0 0 0" diaginertia="0.001 0.001 0.001"/>
+          <joint name="arm1_z" type="slide" axis="0 0 1" range="0 0.25" damping="2"/>
+          <geom name="arm1_link" type="cylinder" size="0.015 0.08" fromto="0 0 0 0 0 -0.08" material="arm"/>
+          <body name="arm1_ee" pos="0 0 -0.08">
+            <inertial mass="0.1" pos="0 0 0" diaginertia="0.0001 0.0001 0.0001"/>
+            <geom name="arm1_gripper" type="box" size="0.02 0.04 0.01" material="gripper"/>
+            <site name="arm1_ee" pos="0 0 0" size="0.01"/>
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <!-- Parts (free bodies) -->
+    <body name="part_1" pos="0.22 0.12 0.46">
+      <freejoint name="part_1_free"/>
+      <geom name="part_1_geom" type="box" size="0.015 0.015 0.015" mass="0.05" material="part"/>
+      <site name="part_1_tip" pos="0 0 0" size="0.012"/>
+    </body>
+    <body name="part_2" pos="0.25 0.15 0.46">
+      <freejoint name="part_2_free"/>
+      <geom name="part_2_geom" type="box" size="0.015 0.015 0.015" mass="0.05" material="part"/>
+      <site name="part_2_tip" pos="0 0 0" size="0.012"/>
+    </body>
+    <body name="part_3" pos="0.28 0.18 0.46">
+      <freejoint name="part_3_free"/>
+      <geom name="part_3_geom" type="box" size="0.015 0.015 0.015" mass="0.05" material="part"/>
+      <site name="part_3_tip" pos="0 0 0" size="0.012"/>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <position name="act_arm0_x" joint="arm0_x" kp="200"/>
+    <position name="act_arm0_y" joint="arm0_y" kp="200"/>
+    <position name="act_arm0_z" joint="arm0_z" kp="200"/>
+    <position name="act_arm1_x" joint="arm1_x" kp="200"/>
+    <position name="act_arm1_y" joint="arm1_y" kp="200"/>
+    <position name="act_arm1_z" joint="arm1_z" kp="200"/>
+  </actuator>
+</mujoco>
