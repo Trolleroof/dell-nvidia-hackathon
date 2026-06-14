@@ -1,0 +1,83 @@
+# NemoClaw Configuration — FactoryMind Controller
+# NemoClaw = OpenClaw + OpenShell + local model routing.
+# This file controls inference routing and the bundle startup.
+#
+# Usage:
+#   nemoclaw start --config factorymind/factorymind/agent/nemoclaw.yaml
+
+version: "1.0"
+name: "factorymind-nemoclaw"
+
+# ── OpenClaw agent ─────────────────────────────────────────────────────────────
+agent:
+  config: "./openclaw.json"      # relative to this file
+  soul:   "./SOUL.md"
+
+# ── OpenShell sandbox ──────────────────────────────────────────────────────────
+shell:
+  policy: "./openshell-policy.yaml"
+  enabled: true
+
+# ── Inference routing ──────────────────────────────────────────────────────────
+# NemoClaw routes all model calls. The agent never holds an API key or URL.
+# Routing is: try primary → on timeout/error → fall back to fallback.
+inference:
+  privacy: local-only            # never route to cloud providers
+  timeout_ms: 30000
+
+  primary:
+    label: "DiffusionGemma (hero path)"
+    provider: openai-compatible
+    base_url: "http://localhost:8000/v1"
+    model: "nvidia/diffusiongemma-26B-A4B-it-NVFP4"
+    type: diffusion
+    canvas_length: 256           # diffusion denoising canvas — keep ≥256 for speed advantage
+    structured_output:
+      mode: guided-json          # vLLM guided JSON decoding — eliminates parse failures
+      parser: gemma4
+    extra_params:
+      reasoning_parser: gemma4
+      hf_overrides:
+        diffusion_sampler: entropy_bound
+        diffusion_entropy_bound: 0.1
+
+  fallback:
+    label: "Gemma4 AR (baseline / always-on fallback)"
+    provider: openai-compatible
+    base_url: "http://localhost:8001/v1"
+    model: "google/gemma-4-26B-A4B-it"
+    type: autoregressive
+    structured_output:
+      mode: guided-json
+      parser: gemma4
+
+  # Activate fallback if primary is unreachable or if diffusion fails by 12:00
+  fallback_trigger:
+    on_connection_error: true
+    on_timeout: true
+    on_parse_failure_count: 3    # after 3 consecutive parse failures, switch to AR
+
+# ── MCP servers ───────────────────────────────────────────────────────────────
+# NemoClaw starts these and wires them to the agent via OpenShell.
+mcp_servers:
+  factorymind-sim:
+    command: "python3"
+    args: ["-m", "factorymind.sim.a.mcp_server"]
+    transport: stdio
+    description: "FactoryMind cell sim — reset_cell, get_cell_state, step_cell, set_task, list_targets"
+
+# ── Telemetry ──────────────────────────────────────────────────────────────────
+telemetry:
+  output_path: "./telemetry/run.jsonl"   # C5 schema — Role C reads this
+  emit_ttft: true                         # time-to-first-token logged separately from total latency
+  emit_tokens: true                       # prompt_tokens + completion_tokens
+
+# ── Demo mode ─────────────────────────────────────────────────────────────────
+demo:
+  # Side-by-side latency race: run both models against same state per tick.
+  # Set to true once both endpoints are confirmed up (after start_models.sh).
+  dual_model_race: false
+  race_endpoints:
+    diffusion: "http://localhost:8000/v1"
+    ar:        "http://localhost:8001/v1"
+  race_seed: 0                  # identical episode seed for fair comparison

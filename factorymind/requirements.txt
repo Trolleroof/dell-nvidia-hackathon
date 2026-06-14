@@ -1,5 +1,10 @@
+# Core — install on both Mac (dev) and GB10 (prod)
 pydantic>=2.7,<3
 mcp>=1.2,<2
-mujoco>=3.1,<4
-numpy>=1.26,<3
-imageio>=2.34,<3
+openai>=1.30,<2         # OpenAICompatClient → /v1/chat/completions
+httpx>=0.27,<1          # async latency + TTFT measurement
+python-dotenv>=1.0,<2   # load .env for endpoint URLs
+
+# GB10 only — uncomment when installing on aarch64 / DGX OS
+# mujoco>=3.1,<4        # Role A MuJoCo sim (aarch64 wheel available via PyPI)
+# numpy>=1.26,<3        # required by mujoco

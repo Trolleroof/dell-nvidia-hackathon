@@ -1,0 +1,24 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: LatencyReport
+description: "Aggregated latency report returned by monitor-latency — one row per model"
+type: object
+properties:
+  rows:
+    type: array
+    items:
+      type: object
+      properties:
+        model:   { type: string }
+        steps:   { type: integer }
+        avg_ms:  { type: number }
+        min_ms:  { type: number }
+        max_ms:  { type: number }
+        retries: { type: integer }
+      required: [model, steps, avg_ms, min_ms, max_ms, retries]
+  speedup_ratio:
+    type: [number, "null"]
+    description: "diffusion avg_ms / ar avg_ms — null if only one model present"
+  summary:
+    type: string
+    description: "Human-readable one-liner, e.g. 'DiffusionGemma was 6.2x faster than AR Gemma.'"
+required: [rows, speedup_ratio, summary]

@@ -1,0 +1,64 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: C2CellState
+description: "Sim state snapshot — returned by get_cell_state and step_cell MCP tools"
+type: object
+properties:
+  step:
+    type: integer
+    description: "Current sim tick"
+  robots:
+    type: array
+    items:
+      $ref: "#/$defs/RobotState"
+  parts:
+    type: array
+    items:
+      $ref: "#/$defs/PartState"
+  stations:
+    type: array
+    items:
+      $ref: "#/$defs/StationState"
+  events:
+    type: array
+    items:
+      type: string
+      enum:
+        - pick_success
+        - place_success
+        - task_complete
+        - collision
+        - grip_miss
+        - gripper_busy
+        - release_empty
+        - release_miss
+        - invalid_target
+        - invalid_release_target
+        - invalid_robot_id
+  done:
+    type: boolean
+required: [step, robots, parts, stations, events, done]
+
+$defs:
+  RobotState:
+    type: object
+    properties:
+      id:      { type: integer }
+      pose:    { type: string }
+      gripper: { type: string, enum: [open, closed] }
+      holding: { type: [string, "null"] }
+    required: [id, pose, gripper, holding]
+
+  PartState:
+    type: object
+    properties:
+      id:  { type: string }
+      pos: { type: array, items: { type: number }, minItems: 3, maxItems: 3 }
+      at:  { type: string }
+    required: [id, pos, at]
+
+  StationState:
+    type: object
+    properties:
+      id:     { type: string }
+      status: { type: string, enum: [empty, occupied, done] }
+    required: [id, status]

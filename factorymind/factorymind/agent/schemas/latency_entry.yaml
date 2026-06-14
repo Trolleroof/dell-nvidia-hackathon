@@ -1,0 +1,22 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: LatencyEntry
+description: "Per-step latency record stored in session memory under latency_log"
+type: object
+properties:
+  step:
+    type: integer
+    description: "Sim tick this entry was recorded at"
+  model:
+    type: string
+    description: "Model name used to generate the plan"
+  latency_ms:
+    type: number
+    description: "Wall-clock time from prompt start to valid CellPlan parse (ms)"
+  retries:
+    type: integer
+    minimum: 0
+    description: "Number of schema-parse retries for this step"
+  plan:
+    type: string
+    description: "The plan string from the CellPlan (one-line intent)"
+required: [step, model, latency_ms, retries, plan]

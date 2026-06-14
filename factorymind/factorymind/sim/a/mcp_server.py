@@ -1,8 +1,10 @@
 """MCP server for the cell sim (stdio / HTTP).
 
-Run:
+Run (stdio — for Cursor / Claude Desktop):
     python -m factorymind.sim.a.mcp_server
-    python -m factorymind.sim.a.mcp_server --http
+
+Run (HTTP — for NemoClaw / OpenClaw remote clients):
+    python -m factorymind.sim.a.mcp_server --http --port 8765
 """
 
 from __future__ import annotations
@@ -26,34 +28,107 @@ mcp = FastMCP(
     "FactoryMind Sim",
     instructions=(
         "MuJoCo assembly cell simulator for FactoryMind. "
-        "Use reset_cell before an episode, get_cell_state to read C2 state, "
-        "and step_cell with a validated CellPlan (C1 schema). "
-        "Named targets: home, bin_a, bin_b, station_1, station_2, part_1/2/3. "
-        "Dashboard frames: frames/latest.png (1280×720) updated on render_cell_frame."
+        "Workflow: set_task → reset_cell → loop(get_cell_state → step_cell) until done. "
+        "Named targets: bin_a, bin_b, station_1, station_2, part_1/2/3, home."
     ),
 )
 
+# UI Prompt — task instruction set by the agent or user before an episode
+_current_task: str = "Move all parts from bin_a to station_1."
+
+
+# ── UI Prompt tools ────────────────────────────────────────────────────────────
 
 @mcp.tool()
-def reset_cell(seed: int = 0, scenario: Scenario = "default") -> dict[str, Any]:
-    """Reset the cell. scenario: default | sort_green | misaligned | empty_bin."""
-    cfg = replace(get_config(), scenario=scenario, default_seed=seed)
-    cell = reset_cell_env(cfg)
+def set_task(instruction: str) -> dict[str, str]:
+    """Set the current task instruction (UI Prompt).
+
+    Args:
+        instruction: Natural-language description of what the cell should accomplish.
+                     Example: "Move all parts from bin_a to station_1."
+    """
+    global _current_task
+    _current_task = instruction.strip()
+    return {"status": "ok", "task": _current_task}
+
+
+@mcp.tool()
+def get_task() -> dict[str, str]:
+    """Return the current task instruction (UI Prompt)."""
+    return {"task": _current_task}
+
+
+# ── Sim state tools ───────────────────────────────────────────────────────────
+
+@mcp.tool()
+def reset_cell(seed: int = 0) -> dict[str, Any]:
+    """Reset the cell to the initial pick-and-place scenario.
+
+    Args:
+        seed: Random seed for deterministic physics.
+    """
+    cell = get_cell_env()
     return cell.reset(seed)
 
 
 @mcp.tool()
 def get_cell_state() -> dict[str, Any]:
-    """Return the current cell state (C2 schema): robots, parts, stations, events, done."""
-    return get_cell_env().get_state()
+    """Return the current cell state (C2 schema).
+
+    Returns a structured snapshot with four named sections matching the
+    MCP architecture — object_states, environment_state, robot_arm_states —
+    plus the active task instruction and flat C2 fields for backward compat.
+    """
+    raw = get_cell_env().get_state()
+
+    # Architecture-aligned sections (object states / environment / robot arms)
+    mujoco_state = {
+        "robot_arm_states": raw["robots"],
+        "object_states": raw["parts"],
+        "environment_state": {
+            "stations": raw["stations"],
+            "step": raw["step"],
+            "done": raw["done"],
+            "events": raw["events"],
+        },
+    }
+
+    return {
+        # Architecture sections
+        "mujoco_state": mujoco_state,
+        "ui_prompt": {"task": _current_task},
+        # Flat C2 fields — kept for backward compat with B's loop
+        **raw,
+    }
 
 
 @mcp.tool()
 def step_cell(plan_json: str) -> dict[str, Any]:
-    """Apply a CellPlan (C1) and advance the simulation one control step."""
+    """Apply a CellPlan (C1) and advance the simulation one control step.
+
+    Args:
+        plan_json: JSON string matching CellPlan schema (plan + robots fields).
+    """
     raw = json.loads(plan_json)
     plan = CellPlan.model_validate(raw)
-    return get_cell_env().step(plan)
+    result = get_cell_env().step(plan)
+
+    # Return with architecture sections, same as get_cell_state
+    mujoco_state = {
+        "robot_arm_states": result["robots"],
+        "object_states": result["parts"],
+        "environment_state": {
+            "stations": result["stations"],
+            "step": result["step"],
+            "done": result["done"],
+            "events": result["events"],
+        },
+    }
+    return {
+        "mujoco_state": mujoco_state,
+        "ui_prompt": {"task": _current_task},
+        **result,
+    }
 
 
 @mcp.tool()
@@ -62,45 +137,33 @@ def list_targets() -> list[str]:
     return get_cell_env().list_targets()
 
 
-@mcp.tool()
-def render_cell_frame(filename: str = "") -> str:
-    """Save an offscreen PNG of the current cell (MuJoCo backend). Returns file path."""
-    cell = get_cell_env()
-    if not hasattr(cell, "save_frame"):
-        return "Render requires FACTORYMIND_SIM_BACKEND=mujoco"
-    path = cell.save_frame(filename or None)
-    return str(path)
-
-
-@mcp.tool()
-def get_latest_frame() -> str:
-    """Return path + metadata for the dashboard frame (frames/latest.png)."""
-    meta = read_latest_frame_meta()
-    if meta is None:
-        latest = latest_frame_path()
-        if latest.is_file():
-            return json.dumps({"path": str(latest.resolve()), "step": None})
-        return "No frame yet — call render_cell_frame or enable FACTORYMIND_SIM_AUTO_FRAME=1"
-    return json.dumps(meta)
-
+# ── Resources (schema references) ─────────────────────────────────────────────
 
 @mcp.resource("factorymind://schema/c2")
 def state_schema() -> str:
-    """C2 sim-state JSON schema reference."""
+    """C2 sim-state JSON schema reference — includes architecture sections."""
     return json.dumps(
         {
+            "mujoco_state": {
+                "robot_arm_states": [
+                    {"id": 0, "pose": "home", "gripper": "open|closed", "holding": "part_3|null"}
+                ],
+                "object_states": [
+                    {"id": "part_3", "pos": [0, 0, 0], "at": "bin_a|station_1|gripper_0|..."}
+                ],
+                "environment_state": {
+                    "stations": [{"id": "station_1", "status": "empty|occupied|done"}],
+                    "step": 42,
+                    "done": False,
+                    "events": ["pick_success", "collision", "task_complete"],
+                },
+            },
+            "ui_prompt": {"task": "Move all parts from bin_a to station_1."},
             "step": 42,
-            "robots": [
-                {
-                    "id": 0,
-                    "pose": "home",
-                    "gripper": "open|closed",
-                    "holding": "part_3|null",
-                }
-            ],
-            "parts": [{"id": "part_3", "pos": [0, 0, 0], "at": "bin_a|station_1|gripper_0|..."}],
-            "stations": [{"id": "station_1", "status": "empty|occupied|done"}],
-            "events": ["pick_success", "collision", "task_complete", "scenario_misaligned"],
+            "robots": "...(same as robot_arm_states, flat compat)",
+            "parts": "...(same as object_states, flat compat)",
+            "stations": "...(same as environment_state.stations, flat compat)",
+            "events": ["pick_success"],
             "done": False,
         },
         indent=2,
@@ -119,18 +182,15 @@ def target_lookup() -> str:
     return json.dumps(TARGET_POSES, indent=2)
 
 
-@mcp.resource("factorymind://frame/latest")
-def latest_frame_resource() -> str:
-    """Dashboard frame sidecar metadata (path, step, width, height)."""
-    meta = read_latest_frame_meta()
-    if meta is None:
-        return json.dumps({"path": str(latest_frame_path()), "available": False}, indent=2)
-    return json.dumps({**meta, "available": True}, indent=2)
-
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="FactoryMind sim MCP server")
-    parser.add_argument("--http", action="store_true", help="Use streamable HTTP transport")
+    parser.add_argument(
+        "--http",
+        action="store_true",
+        help="Use streamable HTTP transport (default: stdio for Cursor/Claude Desktop)",
+    )
     parser.add_argument("--port", type=int, default=8765, help="HTTP port when --http")
     args = parser.parse_args()
 
