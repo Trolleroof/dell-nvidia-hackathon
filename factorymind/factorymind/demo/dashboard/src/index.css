@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 600px at 12% -10%, rgba(10, 143, 220, 0.1), transparent 60%),
+    radial-gradient(1200px 600px at 92% -10%, rgba(118, 185, 0, 0.1), transparent 60%),
+    #000;
+  color: #eef3f8;
+  font-family: "Segoe UI", Inter, system-ui, sans-serif;
+  letter-spacing: 0.2px;
+}
+
+/* faint diagonal-stripe brand texture */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.05;
+  background-image: repeating-linear-gradient(135deg, #fff 0 2px, transparent 2px 14px);
+  -webkit-mask-image: linear-gradient(to bottom, #000, transparent 40%);
+  mask-image: linear-gradient(to bottom, #000, transparent 40%);
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line p-4 relative overflow-hidden;
+    background: linear-gradient(180deg, #11151c, #0c0f14);
+  }
+  .card-title {
+    @apply m-0 mb-3 text-[12.5px] font-extrabold tracking-[2px] uppercase text-dim flex items-center gap-2.5;
+  }
+  .tick {
+    @apply w-1 h-4 rounded-sm bg-faint;
+  }
+  .stat {
+    @apply rounded-[10px] border border-lineSoft p-3;
+    background: #11151c;
+  }
+  .stat-k {
+    @apply text-[10.5px] tracking-[1px] uppercase text-faint;
+  }
+  .stat-v {
+    @apply text-2xl font-extrabold tabular-nums mt-0.5;
+  }
+  .pill {
+    @apply inline-block px-[7px] py-px rounded-full text-[10px] font-extrabold tracking-[0.5px] uppercase;
+  }
+  .btn {
+    @apply rounded-[10px] border border-line px-3.5 py-2 text-[12.5px] font-bold tracking-[0.6px] uppercase cursor-pointer;
+    background: #0c0f14;
+    color: #eef3f8;
+  }
+  .btn:hover {
+    border-color: #2b3a4a;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #1c2430;
+  border-radius: 8px;
+}
+
+@keyframes slidein {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-slidein {
+  animation: slidein 0.25s ease;
+}
