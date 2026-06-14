@@ -80,15 +80,19 @@ One line per control step. This is the dashboard's only data source.
 ```
 factorymind/
 ├── factorymind/
-│   ├── sim/            # A:  scene, get_state(), step(), smoke_test, oracle policy
+│   ├── sim/
+│   │   └── a/          # A: Role A workspace — cell, oracle, MCP, assets (edit here only)
 │   ├── agent/          # B:  loop, schemas, llm_client (mock/openai/oracle), telemetry
 │   └── demo/           # C:  dashboard (static-HTML + Vite), replay mode
 ├── scripts/            # D:  box_setup.sh, start_models.sh, run_demo.sh, save_images.sh
 ├── models/             # D:  (gitignored) NVFP4 diffusion + AR weights, copied from SSD
 ├── telemetry/          # B→C runtime JSONL
+├── CODEOWNERS.md       # who owns which folder (avoid merge conflicts)
 ├── requirements.txt    # pinned; pip install ON THE BOX (no Mac wheels)
 └── README.md
 ```
+
+Role A integration for B: `from factorymind.sim.a import create_cell_env`
 
 ---
 
@@ -116,7 +120,7 @@ MuJoCo (`mujoco` Python bindings: `MjModel`, `MjData`, `mj_step`, `Renderer`), M
 2. Define and freeze the C2 state schema with B.
 3. Implement `reset` / `get_state` / `step`; clamp out-of-range targets.
 4. Build the named-target → pose lookup table.
-5. Write the **oracle policy** and a `smoke_test` (`python -m factorymind.sim.smoke_test`): arms complete the task end-to-end with no LLM.
+5. Write the **oracle policy** and a `smoke_test` (`python -m factorymind.sim.a.smoke_test`): arms complete the task end-to-end with no LLM.
 6. Add offscreen render → PNG/np frame for C; expose a "misaligned part" / "empty bin" scenario for replanning.
 7. Hand C1 (with B) and C2 over; keep the interface stable.
 

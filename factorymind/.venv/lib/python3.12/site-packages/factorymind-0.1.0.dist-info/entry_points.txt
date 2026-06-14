@@ -1,2 +1,0 @@
-[console_scripts]
-factorymind-sim-mcp = factorymind.sim.a.mcp_server:main
