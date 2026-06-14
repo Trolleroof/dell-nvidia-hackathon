@@ -1,4 +1,4 @@
-"""MCP server for Role A sim — lives in sim/a/ to avoid merge conflicts.
+"""MCP server for the cell sim (stdio / HTTP).
 
 Run (stdio — for Cursor / Claude Desktop):
     python -m factorymind.sim.a.mcp_server
@@ -11,13 +11,18 @@ from __future__ import annotations
 
 import argparse
 import json
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
 
 from factorymind.agent.schemas import CellPlan
-from factorymind.sim.a.env_factory import get_cell_env
+from dataclasses import replace
+from factorymind.sim.a.config import get_config
+from factorymind.sim.a.env_factory import get_cell_env, reset_cell_env
+from factorymind.sim.a.frame_export import latest_frame_path, read_latest_frame_meta
 from factorymind.sim.a.targets import TARGET_POSES
+
+Scenario = Literal["default", "sort_green", "misaligned", "empty_bin"]
 
 mcp = FastMCP(
     "FactoryMind Sim",

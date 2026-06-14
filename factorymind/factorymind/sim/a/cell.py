@@ -4,15 +4,22 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from factorymind.agent.schemas import CellPlan, RobotCommand
-from factorymind.sim.a.state import CellState, PartState, RobotState, StationState
+from factorymind.sim.a.part_catalog import TASK_BY_SCENARIO, is_task_done
+from factorymind.sim.a.state import CellState, PartState, RobotState, Scenario, StationState
 from factorymind.sim.a.targets import TARGET_POSES
+
+MISALIGNED_OFFSETS = {
+    "part_1": (0.06, 0.04, 0.0),
+    "part_2": (0.05, -0.03, 0.0),
+    "part_3": (-0.04, 0.05, 0.0),
+}
 
 
 class CellEnv(Protocol):
-    """Stable interface for Role B — do not break without coordinating."""
+    """Stable sim interface — reset, state, step."""
 
     num_robots: int
 
@@ -31,6 +38,7 @@ class MockCellEnv:
 
     num_robots: int = 2
     seed: int = 0
+    scenario: Scenario = "default"
     _rng: random.Random = field(init=False, repr=False)
     _step: int = field(default=0, init=False)
     _robots: list[RobotState] = field(default_factory=list, init=False)
@@ -50,14 +58,26 @@ class MockCellEnv:
         self._step = 0
         self._events = []
         self._done = False
+        if self.scenario == "empty_bin":
+            self._parts = []
+            self._events.append("scenario_empty_bin")
+        else:
+            self._parts = []
+            defaults = {
+                "part_1": [0.1, 0.2, 0.05],
+                "part_2": [0.15, 0.2, 0.05],
+                "part_3": [0.2, 0.2, 0.05],
+            }
+            for part_id, pos in defaults.items():
+                if self.scenario == "misaligned":
+                    dx, dy, dz = MISALIGNED_OFFSETS.get(part_id, (0.0, 0.0, 0.0))
+                    pos = [pos[0] + dx, pos[1] + dy, pos[2] + dz]
+                self._parts.append(PartState.from_id(part_id, pos, "bin_a"))
+            if self.scenario == "misaligned":
+                self._events.append("scenario_misaligned")
         self._robots = [
             RobotState(id=i, pose="home", gripper="open", holding=None)
             for i in range(self.num_robots)
-        ]
-        self._parts = [
-            PartState(id="part_1", pos=[0.1, 0.2, 0.05], at="bin_a"),
-            PartState(id="part_2", pos=[0.15, 0.2, 0.05], at="bin_a"),
-            PartState(id="part_3", pos=[0.2, 0.2, 0.05], at="bin_a"),
         ]
         self._stations = [
             StationState(id="station_1", status="empty"),
@@ -73,6 +93,8 @@ class MockCellEnv:
             stations=self._stations,
             events=list(self._events),
             done=self._done,
+            task=TASK_BY_SCENARIO.get(self.scenario, TASK_BY_SCENARIO["default"]),
+            scenario=self.scenario,
         ).to_dict()
 
     def list_targets(self) -> list[str]:
@@ -88,8 +110,12 @@ class MockCellEnv:
                 continue
             self._apply_command(cmd)
 
-        placed = sum(1 for p in self._parts if p.at == "station_1")
-        if placed >= len(self._parts):
+        task = TASK_BY_SCENARIO.get(self.scenario, TASK_BY_SCENARIO["default"])
+        parts_dict = [
+            {"id": p.id, "at": p.at, "color": p.color}
+            for p in self._parts
+        ]
+        if self._parts and is_task_done(parts_dict, task, self.scenario):
             self._done = True
             if "task_complete" not in self._events:
                 self._events.append("task_complete")
