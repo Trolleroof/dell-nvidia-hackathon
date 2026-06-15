@@ -25,10 +25,13 @@ ARM_MOUNTS: dict[int, tuple[list[float], list[float]]] = {
     1: ([0.08, -0.22, TABLE_TOP_Z], ARM_MOUNT_QUAT),
 }
 
+# Spread across the bin_a tray (center [0.25, 0.15], pad half-extent 0.085) in a
+# wide triangle. Centers are ~0.10 m apart — well beyond the 0.044 m cube width —
+# so the gripper closes on exactly one cube and lifting it never drags a neighbour.
 PART_DEFAULTS = {
-    "part_1": [0.22, 0.12, 0.46],
-    "part_2": [0.25, 0.15, 0.46],
-    "part_3": [0.28, 0.18, 0.46],
+    "part_1": [0.25, 0.205, 0.46],   # yellow — north
+    "part_2": [0.20, 0.105, 0.46],   # blue   — south-west
+    "part_3": [0.30, 0.105, 0.46],   # green  — south-east
 }
 
 PART_BOX_SIZE = [0.022, 0.022, 0.018]

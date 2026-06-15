@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 import mujoco
 import numpy as np
@@ -21,7 +21,7 @@ from factorymind.sim.a.conveyor import (
     part_at_pick_zone,
 )
 from factorymind.sim.a.pose_lookup import ARM_JOINT_NAMES, apply_arm_qpos, read_arm_qpos
-from factorymind.sim.a.frame_export import publish_latest_frame, publish_latest_rgb
+from factorymind.sim.a.frame_export import publish_latest_frame
 from factorymind.sim.a.render import CellRenderer, DASHBOARD_HEIGHT, DASHBOARD_WIDTH, default_frames_dir
 from factorymind.sim.a.part_catalog import TASK_BY_SCENARIO, is_task_done
 from factorymind.sim.a.state import CellState, PartState, RobotState, StationState
@@ -29,9 +29,13 @@ from factorymind.sim.a.targets import TARGET_POSES, TARGET_QPOS, TARGET_QPOS_ARM
 
 Scenario = Literal["default", "sort_green", "misaligned", "empty_bin", "conveyor_feed"]
 
-INTERP_STEPS = 80
-INTERP_ALPHA = 0.12
-PHYSICS_SUBSTEPS = 20
+# Motion is driven by a minimum-jerk trajectory (quintic easing) so each arm
+# starts and ends a move at rest — no velocity discontinuity, no lurch.
+INTERP_STEPS = 140        # substeps per move; longer = finer joint-space granularity
+PLACE_STEPS = 90          # substeps to lower a part onto a station (careful drop)
+PHYSICS_SUBSTEPS = 20     # substeps when no arm is moving (settle/conveyor only)
+RENDER_EVERY_N = 5        # publish latest.png every N substeps for the live view
+LIVE_FRAME_PACE_S = 0.035  # min wall-time between live frames so motion is observable
 
 # Part offsets for optional reset scenarios (metres)
 MISALIGNED_OFFSETS = {
@@ -74,12 +78,14 @@ class MujocoCellEnv:
         self._part_at = {"part_1": "bin_a", "part_2": "bin_a", "part_3": "bin_a"}
         self._station_status = {"station_1": "empty", "station_2": "empty"}
         self._arm_goal: list[dict[str, float] | None] = [None, None]
+        self._arm_start: list[dict[str, float] | None] = [None, None]
         self._interp_remaining = 0
+        self._interp_total = INTERP_STEPS
+        self._part_anim: dict[str, dict[str, Any]] = {}
+        self._task: str = TASK_BY_SCENARIO.get(scenario, TASK_BY_SCENARIO["default"])
+        self._last_frame_t = 0.0
         self._renderer: CellRenderer | None = None
         self._frames_dir = default_frames_dir()
-        # Optional hook called after every physics substep. Used by the live
-        # viewer to render the in-between motion instead of one frame per step.
-        self._on_substep: Callable[[], None] | None = None
         self.reset(seed)
 
     def reset(self, seed: int | None = None) -> dict[str, Any]:
@@ -94,7 +100,10 @@ class MujocoCellEnv:
         self._holding = [None] * self.num_robots
         self._robot_pose = ["home"] * self.num_robots
         self._arm_goal = [None] * self.num_robots
+        self._arm_start = [None] * self.num_robots
         self._interp_remaining = 0
+        self._part_anim = {}
+        self._task = TASK_BY_SCENARIO.get(self.scenario, TASK_BY_SCENARIO["default"])
 
         if self.scenario == "empty_bin":
             self._part_at = {}
@@ -143,9 +152,20 @@ class MujocoCellEnv:
             stations=stations,
             events=list(self._events),
             done=self._done,
-            task=TASK_BY_SCENARIO.get(self.scenario, TASK_BY_SCENARIO["default"]),
+            task=self._task,
             scenario=self.scenario,
         ).to_dict()
+
+    def set_task(self, instruction: str) -> None:
+        """Set the active task (UI prompt). Drives both the oracle's part filter
+        and the done-check, so 'pick the yellow only' stops after the yellow cube."""
+        cleaned = (instruction or "").strip()
+        if cleaned:
+            self._task = cleaned
+
+    @property
+    def task(self) -> str:
+        return self._task
 
     def list_targets(self) -> list[str]:
         return sorted(TARGET_POSES.keys())
@@ -182,111 +202,27 @@ class MujocoCellEnv:
         )
         return saved
 
-    def publish_live_frame(self) -> None:
-        """Render the current state straight to frames/latest.png (no per-step PNG).
-
-        Cheaper than save_frame() for the live dashboard poll target — used by the
-        substep smoothing hook, which fires many times per step.
-        """
-        if self._renderer is None:
-            self._renderer = CellRenderer(self._model)
-        rgb = self._renderer.render_rgb(self._data)
-        publish_latest_rgb(
-            rgb,
-            step=self._step,
-            width=DASHBOARD_WIDTH,
-            height=DASHBOARD_HEIGHT,
-            frames_dir=self._frames_dir,
-        )
-
-    def enable_live_smoothing(
-        self, frames_per_step: int = 6, min_frame_dt: float = 0.05
-    ) -> None:
-        """Animate the in-between motion to frames/latest.png so live dashboards
-        (which poll latest.png ~10 Hz) show smooth arms instead of one jump per step.
-
-        frames_per_step: latest.png refreshes per motion step. Capped on purpose —
-                         a 720p offscreen render is ~100 ms on CPU, so rendering
-                         every substep (80×) would stall the loop for seconds.
-        min_frame_dt:    minimum wall-clock between published frames. On fast (GPU)
-                         hardware this paces playback to real-ish time; on slow CPU
-                         render time already exceeds it and no extra sleep happens.
-
-        Do NOT enable on the latency-critical NemoClaw step path — the added render
-        time would inflate the measured tool-call cadence on the dashboard.
-        """
-        import time
-
-        every = max(1, INTERP_STEPS // max(1, frames_per_step))
-        clock = {"i": 0, "last": None}
-
-        def hook() -> None:
-            clock["i"] += 1
-            if clock["i"] % every != 0:
-                return
-            if min_frame_dt > 0 and clock["last"] is not None:
-                delay = min_frame_dt - (time.perf_counter() - clock["last"])
-                if delay > 0:
-                    time.sleep(delay)
-            try:
-                self.publish_live_frame()
-            except Exception:
-                pass
-            clock["last"] = time.perf_counter()
-
-        self._on_substep = hook
-
-    def disable_live_smoothing(self) -> None:
-        self._on_substep = None
-
-    def apply_plan(self, plan: CellPlan) -> None:
-        """Register a control step: apply commands and set arm goals (no physics).
-
-        Split out of ``step`` so a live driver can animate the resulting motion
-        one render frame at a time via :meth:`advance` instead of stepping the
-        whole interpolation in a single blocking call.
-        """
+    def step(self, plan: CellPlan) -> dict[str, Any]:
         self._events = []
         self._step += 1
+
         for cmd in plan.robots:
             if cmd.id < 0 or cmd.id >= self.num_robots:
                 self._events.append("invalid_robot_id")
                 continue
             self._apply_command(cmd)
 
-    def advance(self, n_substeps: int) -> bool:
-        """Run up to ``n_substeps`` of interpolation + physics.
-
-        Returns ``True`` once arm interpolation has settled (the visible motion
-        for the current plan is complete).
-        """
-        for _ in range(n_substeps):
-            if self._interp_remaining > 0:
-                self._interpolate_arms()
-                self._interp_remaining -= 1
-            mujoco.mj_step(self._model, self._data)
-            self._sync_gripped_parts()
-            self._advance_conveyor_belt()
-        return self._interp_remaining == 0
-
-    def finalize_step(self) -> dict[str, Any]:
-        """Collision check + task-done detection after a step's motion settles."""
+        self._simulate_motion_and_physics()
         self._check_collisions()
+
         parts = [
             {"id": pid, "at": at, "color": PartState.from_id(pid, [0, 0, 0], at).color}
             for pid, at in self._part_at.items()
         ]
-        if is_task_done(parts, TASK_BY_SCENARIO.get(self.scenario, ""), self.scenario):
+        if is_task_done(parts, self._task, self.scenario):
             self._done = True
             if "task_complete" not in self._events:
                 self._events.append("task_complete")
-        return self.get_state()
-
-    def step(self, plan: CellPlan) -> dict[str, Any]:
-        self.apply_plan(plan)
-        total = max(INTERP_STEPS if self._interp_remaining else 0, PHYSICS_SUBSTEPS)
-        self.advance(total)
-        state = self.finalize_step()
 
         if os.environ.get("FACTORYMIND_SIM_AUTO_FRAME") == "1":
             try:
@@ -294,7 +230,7 @@ class MujocoCellEnv:
             except Exception:
                 pass
 
-        return state
+        return self.get_state()
 
     def _apply_command(self, cmd: RobotCommand) -> None:
         if cmd.action == "hold":
@@ -306,8 +242,12 @@ class MujocoCellEnv:
             if q is None:
                 self._events.append("invalid_target")
                 return
+            # Capture the arm's current pose as the trajectory start so the
+            # min-jerk path is deterministic (not re-read from perturbed physics).
+            self._arm_start[cmd.id] = read_arm_qpos(self._model, self._data, cmd.id)
             self._arm_goal[cmd.id] = dict(q)
-            self._interp_remaining = max(self._interp_remaining, INTERP_STEPS)
+            self._interp_remaining = INTERP_STEPS
+            self._interp_total = INTERP_STEPS
             self._robot_pose[cmd.id] = cmd.target
             return
 
@@ -349,25 +289,46 @@ class MujocoCellEnv:
             self._holding[cmd.id] = None
             self._part_at[part_id] = station
             self._station_status[station] = "occupied"
-            self._place_part_on_station(part_id, station)
+            self._begin_placement(part_id, station)
             self._open_gripper(cmd.id)
             self._events.append("place_success")
 
+    @staticmethod
+    def _min_jerk(tau: float) -> float:
+        """Quintic minimum-jerk easing: s(0)=0, s(1)=1, with zero velocity AND
+        zero acceleration at both endpoints. This is what makes an arm move
+        start and stop smoothly instead of lurching."""
+        if tau <= 0.0:
+            return 0.0
+        if tau >= 1.0:
+            return 1.0
+        return tau * tau * tau * (10.0 + tau * (-15.0 + 6.0 * tau))
+
+    def _zero_arm_qvel(self, arm_id: int) -> None:
+        """Clear arm joint velocities so the integrator doesn't add jitter on
+        top of the kinematically-driven trajectory."""
+        for jname in ARM_JOINT_NAMES:
+            jid = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_JOINT, f"arm{arm_id}_{jname}")
+            if jid >= 0:
+                dof = int(self._model.jnt_dofadr[jid])
+                self._data.qvel[dof] = 0.0
+
     def _interpolate_arms(self) -> None:
+        # Progress fraction across the whole move (0 → 1 over INTERP_STEPS).
+        elapsed = self._interp_total - self._interp_remaining
+        tau = (elapsed + 1) / float(self._interp_total)
+        s = self._min_jerk(tau)
+
         for i in range(self.num_robots):
             goal = self._arm_goal[i]
-            if goal is None:
+            start = self._arm_start[i]
+            if goal is None or start is None:
                 continue
-            current = read_arm_qpos(self._model, self._data, i)
             blended: dict[str, float] = {}
-            settled = True
             for jname in ARM_JOINT_NAMES:
-                cur = current.get(jname, 0.0)
-                tgt = goal.get(jname, cur)
-                nxt = cur + INTERP_ALPHA * (tgt - cur)
-                if abs(nxt - tgt) > 1e-4:
-                    settled = False
-                blended[jname] = nxt
+                a = start.get(jname, 0.0)
+                b = goal.get(jname, a)
+                blended[jname] = a + s * (b - a)
             apply_arm_qpos(
                 self._model,
                 self._data,
@@ -375,20 +336,48 @@ class MujocoCellEnv:
                 blended,
                 gripper_open=not self._gripper_closed[i],
             )
-            if settled:
+            self._zero_arm_qvel(i)
+            if tau >= 1.0:
                 self._arm_goal[i] = None
+                self._arm_start[i] = None
+
+    def _publish_sub_frame(self) -> None:
+        """Render current physics state to latest.png for smooth live dashboard view."""
+        if self._renderer is None:
+            self._renderer = CellRenderer(self._model)
+        import shutil
+        tmp = self._frames_dir / "_sub.png"
+        self._renderer.save_png(self._data, tmp)
+        dest = self._frames_dir / "latest.png"
+        self._frames_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(tmp, dest)
 
     def _simulate_motion_and_physics(self) -> None:
+        import time
         steps = max(INTERP_STEPS if self._interp_remaining else 0, PHYSICS_SUBSTEPS)
-        for _ in range(steps):
+        if self._part_anim:
+            steps = max(steps, PLACE_STEPS)
+        live = os.environ.get("FACTORYMIND_SIM_AUTO_FRAME") == "1"
+        for sub in range(steps):
             if self._interp_remaining > 0:
                 self._interpolate_arms()
                 self._interp_remaining -= 1
             mujoco.mj_step(self._model, self._data)
             self._sync_gripped_parts()
+            self._advance_placements()
             self._advance_conveyor_belt()
-            if self._on_substep is not None:
-                self._on_substep()
+            if live and sub % RENDER_EVERY_N == 0:
+                # Pace frames in wall-time so the smooth trajectory is actually
+                # observable by the dashboard instead of completing in one tick.
+                now = time.monotonic()
+                wait = LIVE_FRAME_PACE_S - (now - self._last_frame_t)
+                if wait > 0:
+                    time.sleep(wait)
+                self._last_frame_t = time.monotonic()
+                try:
+                    self._publish_sub_frame()
+                except Exception:
+                    pass
 
     def _advance_conveyor_on_body(self, body_id: str, wrap_offset: float, base_y: float, base_z: float) -> None:
         bid = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_BODY, body_id)
@@ -499,6 +488,42 @@ class MujocoCellEnv:
         site_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_SITE, station)
         sp = self._model.site_pos[site_id]
         self._set_body_pos(part_id, [float(sp[0]), float(sp[1]), float(sp[2]) + 0.02])
+
+    def _begin_placement(self, part_id: str, station: str) -> None:
+        """Start a careful, min-jerk descent of the part from the gripper down to
+        the station surface — instead of teleporting it (which looked like a jump)."""
+        site_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_SITE, station)
+        sp = self._model.site_pos[site_id]
+        start = self._part_position(part_id)
+        # Land just above the tray pad so the part settles without clipping or bouncing.
+        goal = [float(sp[0]), float(sp[1]), float(sp[2]) + 0.008]
+        self._part_anim[part_id] = {"start": start, "goal": goal, "step": 0, "total": PLACE_STEPS}
+
+    def _advance_placements(self) -> None:
+        """Advance every active placement descent one substep along its min-jerk path."""
+        for part_id in list(self._part_anim.keys()):
+            anim = self._part_anim[part_id]
+            anim["step"] += 1
+            tau = anim["step"] / float(anim["total"])
+            s = self._min_jerk(tau)
+            start, goal = anim["start"], anim["goal"]
+            pos = [start[k] + s * (goal[k] - start[k]) for k in range(3)]
+            self._set_body_pose_flat(part_id, pos)
+            if tau >= 1.0:
+                del self._part_anim[part_id]
+
+    def _set_body_pose_flat(self, body_name: str, pos: list[float]) -> None:
+        """Set a free body's position upright (identity orientation) and clear its
+        velocity, so a placed part descends level and doesn't drift under gravity."""
+        bid = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_BODY, body_name)
+        jnt_adr = int(self._model.body_jntadr[bid])
+        if jnt_adr < 0:
+            return
+        qpos_adr = int(self._model.jnt_qposadr[jnt_adr])
+        self._data.qpos[qpos_adr : qpos_adr + 3] = pos
+        self._data.qpos[qpos_adr + 3 : qpos_adr + 7] = [1.0, 0.0, 0.0, 0.0]
+        dof = int(self._model.jnt_dofadr[jnt_adr])
+        self._data.qvel[dof : dof + 6] = 0.0
 
     def _find_station(self, ref: str) -> str | None:
         if ref in self._station_status:
