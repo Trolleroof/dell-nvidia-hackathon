@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { CellView } from "./CellView";
 import { MetricsPanel, ActivityLog } from "./Telemetry";
 import type { TelemetryRow } from "../types";
@@ -22,8 +22,9 @@ interface Props {
   onReset: () => void;
 }
 
-const LIVE_FEED_URL = "http://localhost:8766/telemetry/run.jsonl";
+const LIVE_FEED_URL = "http://localhost:8765/telemetry/run.jsonl";
 const COMMAND_URL = "http://localhost:8765/command";
+const RESET_URL = "http://localhost:8765/reset";
 const SCENARIO_URL = "http://localhost:8765/scenario";
 
 // Scenario presets the sim backend supports (id → label).
@@ -49,7 +50,6 @@ export function AgentSimPage({
   onReset,
 }: Props) {
   const [draft, setDraft] = useState("");
-  const autoStepBusy = useRef(false);
   // Pre-seeded so the channel self-explains: judges see what a command looks like.
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: "operator", text: "sort the green parts into station_2" },
@@ -60,11 +60,13 @@ export function AgentSimPage({
   const pickScenario = async (id: string) => {
     setScenario(id);
     try {
-      await fetch(SCENARIO_URL, {
+      const res = await fetch(SCENARIO_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenario: id }),
+        body: JSON.stringify({ seed: 0, scenario: id }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      onReset();
     } catch {
       // sim server not running
     }
@@ -74,25 +76,31 @@ export function AgentSimPage({
     if (liveUrl !== LIVE_FEED_URL) setLiveUrl(LIVE_FEED_URL);
   }, [liveUrl, setLiveUrl]);
 
-  useEffect(() => {
-    if (!playing) return;
-    const id = setInterval(async () => {
-      if (autoStepBusy.current) return;
-      autoStepBusy.current = true;
-      try {
-        await fetch(COMMAND_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ steps: 1 }),
-        });
-      } catch {
-        // sim not running
-      } finally {
-        autoStepBusy.current = false;
-      }
-    }, 600);
-    return () => clearInterval(id);
-  }, [playing]);
+  const handleReset = async () => {
+    setPlaying(false);
+    try {
+      const res = await fetch(RESET_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seed: 0, scenario }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      onReset();
+      setMessages((prev) => [
+        ...prev,
+        { role: "agent", text: "Environment reset. Enter a prompt to run that exact task." },
+      ]);
+    } catch (e) {
+      onReset();
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "agent",
+          text: `Reset failed (${(e as Error).message}). Start MCP sim server on :8765.`,
+        },
+      ]);
+    }
+  };
 
   const send = async (text: string) => {
     const trimmed = text.trim();
@@ -114,7 +122,8 @@ export function AgentSimPage({
         done: boolean;
         executed: { step: number; action: string; events: string[] }[];
       };
-      const last = data.executed[data.executed.length - 1];
+      const executed = Array.isArray(data.executed) ? data.executed : [];
+      const last = executed[executed.length - 1];
       setMessages((prev) => [
         ...prev,
         {
@@ -151,7 +160,7 @@ export function AgentSimPage({
             <button className="agent-primary" onClick={() => setPlaying(!playing)}>
               {playing ? "Pause" : "Run"}
             </button>
-            <button className="agent-secondary" onClick={onReset}>Reset</button>
+            <button className="agent-secondary" onClick={handleReset}>Reset</button>
             <div className="agent-status-inline">
               <span className={`agent-status-dot${playing ? "" : " is-idle"}`} />
               <strong>{playing ? "Running" : "Paused"}</strong>

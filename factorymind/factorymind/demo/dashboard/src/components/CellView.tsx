@@ -34,8 +34,8 @@ const PART_COLORS: Record<string, string> = {
 
 const ZONES = ["bin_a", "bin_b", "station_1", "station_2"];
 
-export const SIM_FRAME_BASE = "http://localhost:8766";
-const SIM_API_BASE = "http://localhost:8765";
+export const SIM_API_BASE = "http://localhost:8765";
+export const SIM_FRAME_BASE = SIM_API_BASE;
 
 // ── Smooth live canvas ─────────────────────────────────────────────────────────
 
@@ -44,11 +44,17 @@ const POSE_XY: Record<string, [number, number]> = {
   home:                [260, 42],
   above_bin_a:         [88,  192],
   above_bin_b:         [88,  137],
+  above_part_1:        [76,  206],
+  above_part_2:        [90,  208],
+  above_part_3:        [104, 206],
   above_station_1:     [432, 192],
   above_station_2:     [432, 137],
   above_conveyor_pick: [200, 255],
   bin_a:               [88,  192],
   bin_b:               [88,  137],
+  part_1:              [76,  206],
+  part_2:              [90,  208],
+  part_3:              [104, 206],
   station_1:           [432, 192],
   station_2:           [432, 137],
   conveyor:            [200, 255],
@@ -90,6 +96,10 @@ function slotXY(partId: string, at: string): [number, number] {
 
 interface ArmAnim { x: number; y: number; grip: boolean }
 interface PartAnim { id: string; x: number; y: number; at: string; color: string }
+
+function heldPartXY(arm: ArmAnim): [number, number] {
+  return [arm.x, arm.y + 18];
+}
 
 function drawScene(
   ctx: CanvasRenderingContext2D,
@@ -218,17 +228,24 @@ function drawScene(
     ctx.fill();
     ctx.stroke();
 
-    // Gripper tines when open
-    if (!arm.grip) {
-      ctx.strokeStyle = c;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(tx - 5, ty + 5);
-      ctx.lineTo(tx - 5, ty + 11);
-      ctx.moveTo(tx + 5, ty + 5);
-      ctx.lineTo(tx + 5, ty + 11);
-      ctx.stroke();
+    // Gripper tines stay visible: open tines reach down, closed tines clamp the carried block.
+    ctx.strokeStyle = c;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    if (arm.grip) {
+      ctx.moveTo(tx - 9, ty + 8);
+      ctx.lineTo(tx - 9, ty + 24);
+      ctx.lineTo(tx - 5, ty + 27);
+      ctx.moveTo(tx + 9, ty + 8);
+      ctx.lineTo(tx + 9, ty + 24);
+      ctx.lineTo(tx + 5, ty + 27);
+    } else {
+      ctx.moveTo(tx - 6, ty + 5);
+      ctx.lineTo(tx - 11, ty + 18);
+      ctx.moveTo(tx + 6, ty + 5);
+      ctx.lineTo(tx + 11, ty + 18);
     }
+    ctx.stroke();
   }
 
   // HUD
@@ -334,8 +351,9 @@ function LiveSmoothCanvas({ apiBase }: { apiBase: string }) {
       for (const t of partsTgt.current) {
         if (t.at.startsWith("gripper_")) {
           const ri = parseInt(t.at.slice(-1), 10) || 0;
-          t.x = armCur.current[ri].x;
-          t.y = armCur.current[ri].y + 14;
+          const [x, y] = heldPartXY(armCur.current[ri]);
+          t.x = x;
+          t.y = y;
         }
       }
 
@@ -343,9 +361,14 @@ function LiveSmoothCanvas({ apiBase }: { apiBase: string }) {
       for (const cur of partsCur.current) {
         const tgt = partsTgt.current.find((p) => p.id === cur.id);
         if (!tgt) continue;
+        cur.at = tgt.at;
+        if (cur.at.startsWith("gripper_")) {
+          cur.x = tgt.x;
+          cur.y = tgt.y;
+          continue;
+        }
         cur.x = lerp(cur.x, tgt.x, alpha);
         cur.y = lerp(cur.y, tgt.y, alpha);
-        cur.at = tgt.at;
       }
 
       drawScene(

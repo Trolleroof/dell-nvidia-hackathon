@@ -16,7 +16,7 @@ export function useTelemetry() {
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [liveUrl, setLiveUrl] = useState("../../telemetry/run.jsonl");
-  const [hint, setHint] = useState("Live — polling sim feed on :8766.");
+  const [hint, setHint] = useState("Live — polling sim feed on :8765.");
 
   const dRowsRef = useRef<TelemetryRow[]>([]);
   const aRowsRef = useRef<TelemetryRow[]>([]);

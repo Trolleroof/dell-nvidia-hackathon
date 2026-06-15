@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import time
+import urllib.request
 from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
@@ -28,6 +30,7 @@ from factorymind.sim.a.telemetry_bridge import (
     append_rows,
     c5_row_for_step,
     default_telemetry_path,
+    telemetry_dir,
 )
 
 Scenario = Literal["default", "sort_green", "misaligned", "empty_bin", "conveyor_feed"]
@@ -264,6 +267,137 @@ def target_lookup() -> str:
     return json.dumps(TARGET_POSES, indent=2)
 
 
+_DIFFUSIONGEMMA_BASE_URL = "http://localhost:8000/v1"
+_DIFFUSIONGEMMA_MODEL = "diffusiongemma"
+_VALID_COLORS = {"yellow", "blue", "green", "all"}
+_VALID_STATIONS = {"station_1", "station_2"}
+
+
+def _extract_json_object(text: str) -> dict[str, Any] | None:
+    """Parse the first JSON object from model text, tolerating prefixes."""
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    for idx in range(start, len(text)):
+        ch = text[idx]
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\":
+            escaped = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    value = json.loads(text[start : idx + 1])
+                except Exception:
+                    return None
+                return value if isinstance(value, dict) else None
+    return None
+
+
+def _fallback_intent_from_prompt(instruction: str) -> dict[str, str]:
+    lower = instruction.lower().replace("-", "_")
+    station = "station_2" if re.search(r"station[_ ]?2", lower) else "station_1"
+    color = "all"
+    for candidate in ("green", "blue", "yellow"):
+        if candidate in lower:
+            color = candidate
+            break
+    return {"color": color, "target_station": station}
+
+
+def _normalize_intent(raw: dict[str, Any] | None, instruction: str) -> dict[str, str]:
+    fallback = _fallback_intent_from_prompt(instruction)
+    if not raw:
+        return fallback
+    color = str(raw.get("color") or raw.get("part_color") or fallback["color"]).lower().strip()
+    station = str(raw.get("target_station") or raw.get("station") or fallback["target_station"]).lower().strip()
+    station = station.replace(" ", "_").replace("-", "_")
+    if station in {"station2", "2"}:
+        station = "station_2"
+    elif station in {"station1", "1"}:
+        station = "station_1"
+    if color not in _VALID_COLORS:
+        color = fallback["color"]
+    if station not in _VALID_STATIONS:
+        station = fallback["target_station"]
+    return {"color": color, "target_station": station}
+
+
+def _canonical_task_from_intent(intent: dict[str, str]) -> str:
+    color = intent["color"]
+    station = intent["target_station"]
+    if color == "all":
+        return f"Pick all parts from bin_a and place them on {station}."
+    return f"Sort the {color} parts into {station}."
+
+
+def _diffusiongemma_intent(instruction: str, state: dict[str, Any]) -> tuple[dict[str, str], dict[str, Any]]:
+    """Use DiffusionGemma only for prompt intent; deterministic code executes."""
+    fallback = _fallback_intent_from_prompt(instruction)
+    available = [
+        {"id": p.get("id"), "color": p.get("color"), "at": p.get("at")}
+        for p in state.get("parts", [])
+    ]
+    prompt = (
+        "JSON only. Extract a factory sorting intent. "
+        "Return exactly one object like "
+        "{\"color\":\"green\",\"target_station\":\"station_2\"}. "
+        "Allowed color values: green, blue, yellow, all. "
+        "Allowed target_station values: station_1, station_2. "
+        f"Available parts: {json.dumps(available, separators=(',', ':'))}. "
+        f"Command: {instruction}"
+    )
+    body = json.dumps(
+        {
+            "model": _DIFFUSIONGEMMA_MODEL,
+            "messages": [
+                {"role": "system", "content": "You output only one valid JSON object and no prose."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.0,
+            "max_tokens": 32,
+            "stream": False,
+        }
+    ).encode()
+    meta: dict[str, Any] = {"source": "diffusiongemma", "fallback_used": False}
+    try:
+        req = urllib.request.Request(
+            f"{_DIFFUSIONGEMMA_BASE_URL}/chat/completions",
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        t0 = time.monotonic()
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            payload = json.loads(resp.read())
+        meta["latency_ms"] = int((time.monotonic() - t0) * 1000)
+        usage = payload.get("usage") or {}
+        if usage:
+            meta["usage"] = usage
+        content = payload.get("choices", [{}])[0].get("message", {}).get("content", "")
+        meta["raw"] = str(content)[:500]
+        parsed = _extract_json_object(str(content))
+        if parsed is None:
+            meta.update({"fallback_used": True, "error": "diffusiongemma returned no parseable JSON"})
+            return fallback, meta
+        return _normalize_intent(parsed, instruction), meta
+    except Exception as exc:
+        meta.update({"source": "keyword_fallback", "fallback_used": True, "error": str(exc)})
+        return fallback, meta
+
+
 # ── Browser bridge — frontend "Queue command" → real sim action ────────────────
 # The Role C dashboard runs in a browser and cannot do the MCP session handshake
 # cleanly, so we expose a plain CORS-enabled REST endpoint in the SAME process
@@ -274,9 +408,44 @@ def target_lookup() -> str:
 
 _CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
 }
+
+
+def _safe_file_under(root: Path, rel: str) -> Path | None:
+    """Resolve rel under root; reject path traversal."""
+    from pathlib import Path as _Path
+
+    base = _Path(root).resolve()
+    try:
+        target = (base / rel).resolve()
+        target.relative_to(base)
+    except ValueError:
+        return None
+    return target if target.is_file() else None
+
+
+@mcp.custom_route("/scenario", methods=["POST", "OPTIONS"])
+@mcp.custom_route("/reset", methods=["POST", "OPTIONS"])
+async def reset_route(request):  # type: ignore[no-untyped-def]
+    from starlette.responses import JSONResponse
+
+    if request.method == "OPTIONS":
+        return JSONResponse({}, headers=_CORS_HEADERS)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    seed = int(body.get("seed", 0))
+    scenario = str(body.get("scenario", "default")).strip() or "default"
+    if scenario not in {"default", "sort_green", "misaligned", "empty_bin", "conveyor_feed"}:
+        scenario = "default"
+
+    state = reset_cell(seed=seed, scenario=scenario)  # type: ignore[arg-type]
+    return JSONResponse({"ok": True, **state}, headers=_CORS_HEADERS)
 
 
 @mcp.custom_route("/command", methods=["POST", "OPTIONS"])
@@ -294,9 +463,6 @@ async def queue_command(request):  # type: ignore[no-untyped-def]
     instruction = str(body.get("instruction", "")).strip()
     steps = int(body.get("steps", 5))
     steps = max(1, min(steps, 50))
-
-    if instruction:
-        _current_task = instruction
 
     from factorymind.sim.a.oracle import oracle_plan
 
@@ -318,9 +484,15 @@ async def queue_command(request):  # type: ignore[no-untyped-def]
         state = env.get_state()
         did_reset = True
 
+    intent: dict[str, str] | None = None
+    intent_meta: dict[str, Any] = {"source": "none", "fallback_used": False}
+    if instruction:
+        intent, intent_meta = _diffusiongemma_intent(instruction, state)
+        _current_task = _canonical_task_from_intent(intent)
+
     # Apply the operator's prompt AFTER any reset so it isn't clobbered by the
-    # scenario default — this is what makes "pick the yellow only" actually
-    # filter the parts and stop once the yellow cube is placed.
+    # scenario default. DiffusionGemma handles intent extraction; the deterministic
+    # controller handles safe, fast execution of that intent.
     if hasattr(env, "set_task"):
         env.set_task(_current_task)
         state = env.get_state()
@@ -346,13 +518,65 @@ async def queue_command(request):  # type: ignore[no-untyped-def]
         {
             "ok": True,
             "task": _current_task,
+            "operator_prompt": instruction,
+            "intent": intent,
+            "intent_meta": intent_meta,
             "steps_run": len(executed),
             "did_reset": did_reset,
             "done": state.get("done", False),
             "executed": executed,
-            "feed": "http://localhost:8766/telemetry/run.jsonl",
+            "feed": "http://localhost:8765/telemetry/run.jsonl",
         },
         headers=_CORS_HEADERS,
+    )
+
+
+@mcp.custom_route("/sim/{filepath:path}", methods=["GET", "OPTIONS"])
+async def sim_frame_route(request):  # type: ignore[no-untyped-def]
+    """Serve MuJoCo PNG frames — same contract as serve_team_feed on :8766."""
+    from pathlib import Path
+
+    from starlette.responses import FileResponse, JSONResponse, Response
+
+    if request.method == "OPTIONS":
+        return JSONResponse({}, headers=_CORS_HEADERS)
+
+    filepath = str(request.path_params.get("filepath", "")).lstrip("/")
+    if not filepath:
+        return Response(status_code=404)
+
+    frames_root = Path(latest_frame_path().parent)
+    target = _safe_file_under(frames_root, filepath)
+    if target is None:
+        return Response(status_code=404)
+
+    return FileResponse(
+        target,
+        media_type="image/png",
+        headers={**_CORS_HEADERS, "Cache-Control": "no-store"},
+    )
+
+
+@mcp.custom_route("/telemetry/{filepath:path}", methods=["GET", "OPTIONS"])
+async def telemetry_file_route(request):  # type: ignore[no-untyped-def]
+    """Serve live JSONL telemetry for the dashboard poll loop."""
+    from starlette.responses import FileResponse, JSONResponse, Response
+
+    if request.method == "OPTIONS":
+        return JSONResponse({}, headers=_CORS_HEADERS)
+
+    filepath = str(request.path_params.get("filepath", "")).lstrip("/")
+    if not filepath or "/" in filepath or filepath.startswith("."):
+        return Response(status_code=404)
+
+    target = _safe_file_under(telemetry_dir(), filepath)
+    if target is None:
+        return Response(status_code=404)
+
+    return FileResponse(
+        target,
+        media_type="application/x-ndjson",
+        headers={**_CORS_HEADERS, "Cache-Control": "no-store"},
     )
 
 

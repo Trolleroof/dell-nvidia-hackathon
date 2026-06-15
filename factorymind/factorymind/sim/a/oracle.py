@@ -18,12 +18,10 @@ def _pick_source(scenario: str) -> str:
 
 
 def _approach_target(part_id: str, scenario: str, events: list[str]) -> str:
-    """Misaligned parts (or a missed grip) need per-part approach, not bin center."""
+    """Approach the specific part so the pickup is physically visible."""
     if scenario == "conveyor_feed":
         return "conveyor_pick"
-    if scenario == "misaligned" or "grip_miss" in events:
-        return part_id
-    return "bin_a"
+    return part_id
 
 
 def _expected_pose(target: str) -> str:
