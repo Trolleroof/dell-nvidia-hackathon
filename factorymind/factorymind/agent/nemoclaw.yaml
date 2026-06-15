@@ -26,14 +26,15 @@ inference:
   timeout_ms: 30000
 
   primary:
-    label: "Nemotron-3-Nano 30B (Ollama local)"
+    label: "DiffusionGemma local"
     provider: openai-compatible
-    base_url: "http://localhost:11434/v1"
-    model: "nemotron-3-nano:30b"
-    type: autoregressive
+    base_url: "http://localhost:8000/v1"
+    model: "diffusiongemma"
+    type: diffusion
+    canvas_length: 256
     structured_output:
       mode: guided-json
-      parser: nemotron
+      parser: gemma4
 
   # ── Previous primary (DiffusionGemma) — commented out ─────────────────────
   # primary:
