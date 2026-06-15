@@ -40,8 +40,8 @@ Rules:
 Pick-and-place workflow to move a part:
   Step 1: robot action=move, target=bin_a (approach the bin)
   Step 2: robot action=grip, target=part_1 (or part_2, part_3)
-  Step 3: robot action=move, target=station_1 (carry to station)
-  Step 4: robot action=release, target=station_1 (drop at station)
+  Step 3: robot action=move, target=requested station (station_1 or station_2)
+  Step 4: robot action=release, target=same requested station
 """
 
 

@@ -54,6 +54,7 @@ class MockCellEnv:
     _stations: list[StationState] = field(default_factory=list, init=False)
     _events: list[str] = field(default_factory=list, init=False)
     _done: bool = field(default=False, init=False)
+    _task: str = field(default="", init=False)
 
     def __post_init__(self) -> None:
         self._rng = random.Random(self.seed)
@@ -66,6 +67,7 @@ class MockCellEnv:
         self._step = 0
         self._events = []
         self._done = False
+        self._task = TASK_BY_SCENARIO.get(self.scenario, TASK_BY_SCENARIO["default"])
         if self.scenario == "empty_bin":
             self._parts = []
             self._events.append("scenario_empty_bin")
@@ -109,9 +111,18 @@ class MockCellEnv:
             stations=self._stations,
             events=list(self._events),
             done=self._done,
-            task=TASK_BY_SCENARIO.get(self.scenario, TASK_BY_SCENARIO["default"]),
+            task=self._task,
             scenario=self.scenario,
         ).to_dict()
+
+    def set_task(self, instruction: str) -> None:
+        cleaned = (instruction or "").strip()
+        if cleaned:
+            self._task = cleaned
+
+    @property
+    def task(self) -> str:
+        return self._task
 
     def list_targets(self) -> list[str]:
         return sorted(TARGET_POSES.keys())
@@ -128,7 +139,7 @@ class MockCellEnv:
 
         self._advance_conveyor_belt()
 
-        task = TASK_BY_SCENARIO.get(self.scenario, TASK_BY_SCENARIO["default"])
+        task = self._task
         parts_dict = [
             {"id": p.id, "at": p.at, "color": p.color}
             for p in self._parts

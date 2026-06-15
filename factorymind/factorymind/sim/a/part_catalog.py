@@ -56,10 +56,19 @@ def parts_for_task(parts: list[dict], task: str) -> list[dict]:
     return [p for p in parts if p.get("color") in colors]
 
 
+def target_station_for_task(task: str) -> str:
+    """Return destination station requested by the natural-language task."""
+    lower = task.lower().replace("-", "_").replace(" ", "_")
+    if "station_2" in lower or "station2" in lower:
+        return "station_2"
+    return "station_1"
+
+
 def is_task_done(parts: list[dict], task: str, scenario: str) -> bool:
     if scenario == "empty_bin":
         return True
     targets = parts_for_task(parts, task)
     if not targets:
         return False
-    return all(p["at"] == "station_1" for p in targets)
+    station = target_station_for_task(task)
+    return all(p["at"] == station for p in targets)

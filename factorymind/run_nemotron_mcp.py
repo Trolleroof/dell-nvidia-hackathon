@@ -203,7 +203,7 @@ CellPlan schema (serialize as a JSON string passed to step_cell):
 
 Valid targets: bin_a, bin_b, station_1, station_2, part_1, part_2, part_3, home.
 Always include both robots. Pick sequence per part:
-  move→bin_a, grip→part_N, move→station_1, release→station_1
+  move→bin_a, grip→part_N, move→requested station, release→requested station
 
 Call get_cell_state() after every step to observe results.
 Stop when the tool returns done=true.

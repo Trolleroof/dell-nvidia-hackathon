@@ -5,7 +5,7 @@ from __future__ import annotations
 from factorymind.agent.schemas import CellPlan, RobotCommand
 from factorymind.sim.a.cell import CellEnv
 from factorymind.sim.a.conveyor import part_at_pick_zone
-from factorymind.sim.a.part_catalog import parts_for_task
+from factorymind.sim.a.part_catalog import parts_for_task, target_station_for_task
 from factorymind.sim.a.targets import TARGET_POSES
 
 
@@ -47,33 +47,35 @@ def oracle_plan(state: dict) -> CellPlan:
     scenario = state.get("scenario", "default")
     events = state.get("events", [])
     pick_source = _pick_source(scenario)
+    station = target_station_for_task(task)
+    station_pose = _expected_pose(station)
     pending = [p for p in parts_for_task(parts, task) if p["at"] == pick_source]
     in_gripper = [p for p in parts_for_task(parts, task) if p["at"].startswith("gripper_")]
 
     r0 = next(r for r in robots if r["id"] == 0)
 
     if r0["holding"]:
-        if r0["pose"] == "above_station_1":
+        if r0["pose"] == station_pose:
             return CellPlan(
-                plan="Robot 0 releases at station_1 after positioning.",
+                plan="Robot 0 releases at target station after positioning.",
                 robots=[
                     RobotCommand(
                         id=0,
                         action="release",
-                        target="station_1",
-                        reason="Deposit the part on the station fixture.",
+                        target=station,
+                        reason="Deposit the part on the requested station fixture.",
                     ),
                     _hold_r1(),
                 ],
             )
         return CellPlan(
-            plan="Robot 0 carries part to station_1 and releases.",
+            plan="Robot 0 carries part to target station and releases.",
             robots=[
                 RobotCommand(
                     id=0,
                     action="move",
-                    target="station_1",
-                    reason="Approach the assembly station with the held part.",
+                    target=station,
+                    reason="Approach the requested assembly station with the held part.",
                 ),
                 _hold_r1(),
             ],
@@ -81,13 +83,13 @@ def oracle_plan(state: dict) -> CellPlan:
 
     if r0["gripper"] == "closed" and r0["holding"] is None:
         return CellPlan(
-            plan="Robot 0 releases at station_1 after positioning.",
+            plan="Robot 0 releases at target station after positioning.",
             robots=[
                 RobotCommand(
                     id=0,
                     action="release",
-                    target="station_1",
-                    reason="Deposit the part on the station fixture.",
+                    target=station,
+                    reason="Deposit the part on the requested station fixture.",
                 ),
                 _hold_r1(),
             ],
@@ -182,12 +184,12 @@ def oracle_plan(state: dict) -> CellPlan:
 
     if in_gripper:
         return CellPlan(
-            plan="Robot 0 finishes placement at station_1.",
+            plan="Robot 0 finishes placement at target station.",
             robots=[
                 RobotCommand(
                     id=0,
                     action="release",
-                    target="station_1",
+                    target=station,
                     reason="Complete placement for part currently in gripper.",
                 ),
                 _hold_r1(),
